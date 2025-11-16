@@ -10,4 +10,5 @@ redis.on('connect', () => {
 
 redis.on('error', (error) => {
     errorLogger.error('Redis connection error', error);
+    process.exit(1);
 });
