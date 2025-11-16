@@ -4,12 +4,24 @@ import { env } from '../config/env.js';
 import { debugLogger, errorLogger, infoLogger } from '../config/logger.config.js';
 
 const DB_URL = env.DB_URI;
+const isTestEnv = env.NODE_ENV === 'test';
 
-export const sequelize = new Sequelize(DB_URL, {
-    logging: env.NODE_ENV === 'development' ? (msg) => debugLogger.debug(msg) : false,
-});
+const baseOptions = {
+    logging: env.NODE_ENV === 'development' ? (msg: string) => debugLogger.debug(msg) : false,
+};
 
-sequelize.sync({ alter: true });
+export const sequelize = isTestEnv
+    ? new Sequelize(DB_URL.startsWith('sqlite') ? DB_URL : 'sqlite::memory:', {
+        ...baseOptions,
+        dialect: 'sqlite',
+        storage: DB_URL.startsWith('sqlite') ? undefined : ':memory:',
+        logging: false,
+    })
+    : new Sequelize(DB_URL, baseOptions);
+
+if (!isTestEnv) {
+    sequelize.sync({ alter: true });
+}
 
 export async function initializeDatabase() {
     try {

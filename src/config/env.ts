@@ -4,10 +4,23 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const dbUriSchema = z.string().min(1).refine((value) => {
+    if (value.startsWith('sqlite:')) {
+        return true;
+    }
+    try {
+        // eslint-disable-next-line no-new
+        new URL(value);
+        return true;
+    } catch {
+        return false;
+    }
+}, 'DB_URI must be a valid connection string or URL');
+
 const envSchema = z.object({
     NODE_ENV: z.enum(['development', 'production', 'test']),
     PORT: z.coerce.number().int().positive().default(3000),
-    DB_URI: z.url(),
+    DB_URI: dbUriSchema,
     REDIS_URL: z.string().url().default('redis://localhost:6379/0'),
     APP_NAME: z.string().min(1, 'APP_NAME must not be empty'),
     APP_VERSION: z.string().min(1, 'APP_VERSION must not be empty'),
