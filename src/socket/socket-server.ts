@@ -8,6 +8,7 @@ import { PresenceService } from '../modules/chat/v1/presence.service.js';
 import { MessageEntity, SenderRole } from '../modules/chat/v1/entity/message.entity.js';
 import { HttpResponseError } from '../utils/appError.js';
 import { UserService } from '../modules/user/v1/user.service.js';
+import { StatusCodes } from 'http-status-codes';
 
 const TRAINERS_ROOM = 'trainers';
 const HEARTBEAT_EVENT = 'heartbeat';
@@ -121,7 +122,7 @@ export function initializeSocketServer(server: HTTPServer) {
                 const resolvedUserId = role === Roles.USER ? userId : targetUserId;
 
                 if (!resolvedUserId) {
-                    throw new HttpResponseError(400, 'Target userId is required');
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Target userId is required');
                 }
 
                 const senderRole = (role === Roles.USER ? Roles.USER : role) as SenderRole;
@@ -152,16 +153,16 @@ export function initializeSocketServer(server: HTTPServer) {
         socket.on(CALL_OFFER_EVENT, async (payload, callback) => {
             try {
                 if (role !== Roles.USER) {
-                    throw new HttpResponseError(403, 'Only users can start calls');
+                    throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only users can start calls');
                 }
 
                 const { offer } = payload as { offer?: unknown };
                 if (!offer) {
-                    throw new HttpResponseError(400, 'WebRTC SDP offer is required');
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'WebRTC SDP offer is required');
                 }
 
                 if (activeCallSessions.has(userId)) {
-                    throw new HttpResponseError(409, 'A call is already in progress for this user');
+                    throw new HttpResponseError(StatusCodes.CONFLICT, 'A call is already in progress for this user');
                 }
 
                 const caller = await UserService.getUserById(userId);
@@ -207,7 +208,7 @@ export function initializeSocketServer(server: HTTPServer) {
         socket.on(CALL_ANSWER_EVENT, async (payload, callback) => {
             try {
                 if (![Roles.TRAINER, Roles.ADMIN].includes(role)) {
-                    throw new HttpResponseError(403, 'Only trainers or admins can answer calls');
+                    throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only trainers or admins can answer calls');
                 }
 
                 const { userId: payloadUserId, target, answer } = payload as { userId?: string; target?: string; answer?: unknown };
@@ -215,18 +216,18 @@ export function initializeSocketServer(server: HTTPServer) {
                 const targetUserId = payloadUserId ?? (normalizedTarget && normalizedTarget !== TRAINERS_ROOM ? normalizedTarget : undefined);
 
                 if (!targetUserId) {
-                    throw new HttpResponseError(400, 'Target userId is required');
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Target userId is required');
                 }
                 if (!answer) {
-                    throw new HttpResponseError(400, 'WebRTC SDP answer is required');
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'WebRTC SDP answer is required');
                 }
 
                 const session = activeCallSessions.get(targetUserId);
                 if (!session) {
-                    throw new HttpResponseError(404, 'No pending call for this user');
+                    throw new HttpResponseError(StatusCodes.NOT_FOUND, 'No pending call for this user');
                 }
                 if (session.status === 'active') {
-                    throw new HttpResponseError(409, 'This call has already been answered');
+                    throw new HttpResponseError(StatusCodes.CONFLICT, 'This call has already been answered');
                 }
 
                 session.status = 'active';
@@ -264,7 +265,7 @@ export function initializeSocketServer(server: HTTPServer) {
             try {
                 const { candidate, userId: payloadUserId, target } = payload as { candidate?: unknown; userId?: string; target?: string };
                 if (!candidate) {
-                    throw new HttpResponseError(400, 'ICE candidate is required');
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'ICE candidate is required');
                 }
 
                 const normalizedPayloadUserId = typeof payloadUserId === 'string' ? payloadUserId.trim() : undefined;
@@ -287,19 +288,19 @@ export function initializeSocketServer(server: HTTPServer) {
                 } else if ([Roles.TRAINER, Roles.ADMIN].includes(role)) {
                     const targetUserId = resolvedTarget && resolvedTarget !== TRAINERS_ROOM ? resolvedTarget : undefined;
                     if (!targetUserId) {
-                        throw new HttpResponseError(400, 'Target userId is required');
+                        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Target userId is required');
                     }
 
                     const session = activeCallSessions.get(targetUserId);
                     if (session && session.trainerSocketId && session.trainerSocketId !== socket.id) {
-                        throw new HttpResponseError(403, 'You are not attached to this call');
+                        throw new HttpResponseError(StatusCodes.FORBIDDEN, 'You are not attached to this call');
                     }
 
                     io.to(getUserRoom(targetUserId)).emit(CALL_ICE_CANDIDATE_EVENT, {
                         candidate,
                     });
                 } else {
-                    throw new HttpResponseError(403, 'Unsupported role for ICE exchange');
+                    throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Unsupported role for ICE exchange');
                 }
 
                 callback?.({ status: 'ok' });
@@ -327,12 +328,12 @@ export function initializeSocketServer(server: HTTPServer) {
                     callback?.({ status: ended ? 'ok' : 'noop' });
                 } else if ([Roles.TRAINER, Roles.ADMIN].includes(role)) {
                     if (!targetUserId) {
-                        throw new HttpResponseError(400, 'Target userId is required');
+                        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Target userId is required');
                     }
 
                     const session = activeCallSessions.get(targetUserId);
                     if (session && session.trainerSocketId && session.trainerSocketId !== socket.id) {
-                        throw new HttpResponseError(403, 'You are not attached to this call');
+                        throw new HttpResponseError(StatusCodes.FORBIDDEN, 'You are not attached to this call');
                     }
 
                     const ended = await finalizeCallSession(targetUserId, {
@@ -345,7 +346,7 @@ export function initializeSocketServer(server: HTTPServer) {
 
                     callback?.({ status: ended ? 'ok' : 'noop' });
                 } else {
-                    throw new HttpResponseError(403, 'Unsupported role for ending calls');
+                    throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Unsupported role for ending calls');
                 }
             } catch (error) {
                 callback?.({ status: 'error', message: (error as Error).message });
