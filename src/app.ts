@@ -16,6 +16,11 @@ import { postRouterV1 } from './modules/post/v1/post.routes.js';
 import { userProfileRouterV1 } from './modules/user-profile/v1/user-profile.routes.js';
 import { chatRouterV1 } from './modules/chat/v1/chat.routes.js';
 import { followRouterV1 } from './modules/follow/v1/follow.routes.js';
+import { subscriptionRouterV1 } from './modules/subscription/v1/subscription.routes.js';
+import { planUpdateRequestRouterV1 } from './modules/requests/v1/plan-update-request.routes.js';
+import { trainingPlanRouterV1 } from './modules/plans/training/v1/training-plan.routes.js';
+import { dietPlanRouterV1 } from './modules/plans/diet/v1/diet-plan.routes.js';
+import { trackingRouterV1 } from './modules/tracking/v1/tracking.routes.js';
 
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { notFoundMiddleware } from './middleware/not-found.middleware.js';
@@ -51,6 +56,11 @@ export function initializeApp(app: express.Application) {
     app.use('/api/v1/user-profile', userProfileRouterV1);
     app.use('/api/v1/follow', followRouterV1);
     app.use('/api/v1/chat', chatRouterV1);
+    app.use('/api/v1/subscription', subscriptionRouterV1);
+    app.use('/api/v1/plans/requests', planUpdateRequestRouterV1);
+    app.use('/api/v1/plans/training', trainingPlanRouterV1);
+    app.use('/api/v1/plans/diet', dietPlanRouterV1);
+    app.use('/api/v1/tracking', trackingRouterV1);
 
     app.use(notFoundMiddleware);
     app.use(errorMiddleware);

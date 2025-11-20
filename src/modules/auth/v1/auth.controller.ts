@@ -8,6 +8,7 @@ import { HttpResponseError } from '../../../utils/appError.js';
 import { googleClient } from '../../../config/google-client.js';
 import { UserSessionEntity } from '../../user-session/v1/entity/user-session.entity.js';
 import { errorLogger } from '../../../config/logger.config.js';
+import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
 
 
 export async function loginController(req: Request, res: Response): Promise<void> {
@@ -144,9 +145,14 @@ export async function changePasswordController(req: Request, res: Response): Pro
 
 export async function getMeController(req: Request, res: Response): Promise<void> {
     const user = req.user as UserEntity;
+    const subscriptionStatus = await SubscriptionService.getStatus(user.id.toString());
     res.status(StatusCodes.OK).json({
         status: 'success',
-        data: { user: user.toJSON() }
+        data: {
+            user: user.toJSON(),
+            isSubscribed: subscriptionStatus.isSubscribed,
+            profileUpdateRequired: subscriptionStatus.profileUpdateRequired,
+        }
     });
 }
 
