@@ -21,6 +21,7 @@ import { planUpdateRequestRouterV1 } from './modules/requests/v1/plan-update-req
 import { trainingPlanRouterV1 } from './modules/plans/training/v1/training-plan.routes.js';
 import { dietPlanRouterV1 } from './modules/plans/diet/v1/diet-plan.routes.js';
 import { trackingRouterV1 } from './modules/tracking/v1/tracking.routes.js';
+import { trainingVideoRouterV1 } from './modules/training-video/v1/training-video.routes.js';
 
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { notFoundMiddleware } from './middleware/not-found.middleware.js';
@@ -61,6 +62,7 @@ export function initializeApp(app: express.Application) {
     app.use('/api/v1/plans/training', trainingPlanRouterV1);
     app.use('/api/v1/plans/diet', dietPlanRouterV1);
     app.use('/api/v1/tracking', trackingRouterV1);
+    app.use('/api/v1/training-videos', trainingVideoRouterV1);
 
     app.use(notFoundMiddleware);
     app.use(errorMiddleware);

@@ -1,6 +1,7 @@
 import { DataTypes, Model } from 'sequelize';
 import { sequelize } from '../../../../../database/db-config.js';
 import { UserEntity } from '../../../../user/v1/entity/user.entity.js';
+import { TrainingVideoEntity } from '../../../../training-video/v1/entity/training-video.entity.js';
 
 export class TrainingPlanEntity extends Model {
     declare id: string;
@@ -32,8 +33,10 @@ export class TrainingPlanItemEntity extends Model {
     declare description: string | null;
     declare duration: number | null;
     declare repeats: number | null;
+    declare sets: number | null;
+    declare trainingVideoId: string;
     declare isSuperset: boolean;
-    declare supersetExercises: Array<Record<string, unknown>> | null;
+    declare supersetItems: Array<Record<string, unknown>> | null;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -125,6 +128,10 @@ TrainingPlanItemEntity.init(
             type: DataTypes.INTEGER,
             allowNull: false,
         },
+        trainingVideoId: {
+            type: DataTypes.UUID,
+            allowNull: false,
+        },
         title: {
             type: DataTypes.STRING,
             allowNull: false,
@@ -145,11 +152,15 @@ TrainingPlanItemEntity.init(
             type: DataTypes.INTEGER,
             allowNull: true,
         },
+        sets: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+        },
         isSuperset: {
             type: DataTypes.BOOLEAN,
             defaultValue: false,
         },
-        supersetExercises: {
+        supersetItems: {
             type: DataTypes.JSONB,
             allowNull: true,
         },
@@ -176,3 +187,5 @@ TrainingPlanDayEntity.belongsTo(TrainingPlanEntity, { foreignKey: 'planId', as: 
 
 TrainingPlanDayEntity.hasMany(TrainingPlanItemEntity, { foreignKey: 'dayId', as: 'items', onDelete: 'CASCADE', hooks: true });
 TrainingPlanItemEntity.belongsTo(TrainingPlanDayEntity, { foreignKey: 'dayId', as: 'day' });
+TrainingPlanItemEntity.belongsTo(TrainingVideoEntity, { foreignKey: 'trainingVideoId', as: 'trainingVideo' });
+TrainingVideoEntity.hasMany(TrainingPlanItemEntity, { foreignKey: 'trainingVideoId', as: 'trainingPlanItems' });

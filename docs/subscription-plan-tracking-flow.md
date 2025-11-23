@@ -23,7 +23,7 @@ Admin activates subscription ──▶ Subscription active? ──▶ Four-week 
 
 - Subscription activation/renewal sets a four-week window (`nextProfileUpdateDue`).
 - User profile updates require an active subscription **and** an open update window; otherwise, a pending plan-update request is created automatically.
-- Training and diet plans are created by admins only and repeat the provided seven-day template across four weeks (28 days total).
+- Training and diet plans are created by admins only, repeat the provided seven-day template across four weeks (28 days total), and training blocks now reference the reusable training-video library (each item points to a curated video plus required sets/repeats and optional supersets).
 - Daily tracking records completion of plan items, extra work, extra food, and water intake.
 
 ## Endpoint Reference
@@ -95,6 +95,38 @@ POST /api/v1/plans/request-update/6b6f3c64-8f76-4c72-b803-1dca2d6d6f16/approve
 Authorization: Bearer <admin-token>
 ```
 
+### Training Videos & Tags
+
+Admins manage the reusable training library, and all plan items reference these records by ID. Tags help athletes filter content in the app.
+
+| Method | Route | Description | Notes |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/training-videos` | Create a training video with metadata and tags | Admin only |
+| `GET` | `/api/v1/training-videos` | Search/list videos with pagination and tag filtering | Authenticated |
+| `GET` | `/api/v1/training-videos/:videoId` | Fetch a single training video + tags | Authenticated |
+| `PATCH` | `/api/v1/training-videos/:videoId` | Update metadata or tag assignments | Admin only |
+| `DELETE` | `/api/v1/training-videos/:videoId` | Remove a training video | Admin only |
+| `POST` | `/api/v1/training-videos/tags` | Create a training tag (title, description, image) | Admin only |
+| `GET` | `/api/v1/training-videos/tags` | List/search tags | Authenticated |
+| `GET` | `/api/v1/training-videos/tags/:tagId` | Fetch a single tag | Authenticated |
+| `PATCH` | `/api/v1/training-videos/tags/:tagId` | Update a tag | Admin only |
+| `DELETE` | `/api/v1/training-videos/tags/:tagId` | Delete a tag | Admin only |
+
+Sample create request:
+
+```http
+POST /api/v1/training-videos
+Authorization: Bearer <admin-token>
+Content-Type: application/json
+
+{
+  "title": "Back Squat (High Bar)",
+  "description": "4 cues for staying upright",
+  "videoUrl": "https://cdn.example.com/squat.mp4",
+  "tagIds": ["leg-strength", "barbell"]
+}
+```
+
 ### Training Plans (Admin managed)
 
 | Method | Route | Description | Notes |
@@ -102,7 +134,7 @@ Authorization: Bearer <admin-token>
 | `POST` | `/api/v1/plans/training/week/:userId` | Create/overwrite four-week training plan from 7-day template | Admin only |
 | `GET` | `/api/v1/plans/training/:userId` | Retrieve user plan | Admin or owner |
 
-Request template example:
+Request template example (each item references a training video and optionally defines a two-item superset block):
 
 ```http
 POST /api/v1/plans/training/week/43b1a7f4-0c57-4d1f-9d41-93322d4b0f68
@@ -116,15 +148,27 @@ Content-Type: application/json
       "dayNumber": 1,
       "items": [
         {
-          "title": "Back Squat",
-          "description": "4 x 6 @ 75%",
-          "duration": 40,
-          "repeats": 4
+          "trainingVideoId": "a1f1d510-9e7c-4f34-9f1c-ca4fcb7dcd2c",
+          "sets": 4,
+          "repeats": 6
         },
         {
-          "title": "Walking Lunges",
-          "duration": 20,
-          "repeats": 3
+          "trainingVideoId": "01c15f13-76e3-4bc3-934b-8bd9690caeb7",
+          "sets": 3,
+          "repeats": 12,
+          "isSuperset": true,
+          "supersetItems": [
+            {
+              "trainingVideoId": "6f7f259b-7404-4289-8ed7-59f0e0e7a7a1",
+              "sets": 3,
+              "repeats": 12
+            },
+            {
+              "trainingVideoId": "1bfb0d23-8516-44fc-8d73-74fa02cbfe37",
+              "sets": 3,
+              "repeats": 15
+            }
+          ]
         }
       ]
     },
@@ -162,14 +206,73 @@ Response snippet (28-day expansion shown abridged):
               "dayIndex": 1,
               "date": "2025-11-18T00:00:00.000Z",
               "items": [
-                { "id": "...", "title": "Back Squat", "order": 1 },
-                { "id": "...", "title": "Walking Lunges", "order": 2 }
+                {
+                  "id": "...",
+                  "order": 1,
+                  "sets": 4,
+                  "repeats": 6,
+                  "isSuperset": false,
+                  "trainingVideo": {
+                    "id": "a1f1d510-9e7c-4f34-9f1c-ca4fcb7dcd2c",
+                    "title": "Back Squat (High Bar)",
+                    "videoUrl": "https://cdn.example.com/squat.mp4",
+                    "tags": [
+                      { "id": "leg-strength", "title": "Leg Strength", "imageUrl": "https://cdn.example.com/leg.png" }
+                    ]
+                  },
+                  "supersetItems": []
+                },
+                {
+                  "id": "...",
+                  "order": 2,
+                  "sets": 3,
+                  "repeats": 12,
+                  "isSuperset": true,
+                  "trainingVideo": {
+                    "id": "01c15f13-76e3-4bc3-934b-8bd9690caeb7",
+                    "title": "Walking Lunges",
+                    "videoUrl": "https://cdn.example.com/lunge.mp4",
+                    "tags": []
+                  },
+                  "supersetItems": [
+                    {
+                      "trainingVideoId": "6f7f259b-7404-4289-8ed7-59f0e0e7a7a1",
+                      "sets": 3,
+                      "repeats": 12,
+                      "trainingVideo": {
+                        "id": "6f7f259b-7404-4289-8ed7-59f0e0e7a7a1",
+                        "title": "Glute Bridge",
+                        "videoUrl": "https://cdn.example.com/glute_bridge.mp4",
+                        "tags": []
+                      }
+                    },
+                    {
+                      "trainingVideoId": "1bfb0d23-8516-44fc-8d73-74fa02cbfe37",
+                      "sets": 3,
+                      "repeats": 15,
+                      "trainingVideo": {
+                        "id": "1bfb0d23-8516-44fc-8d73-74fa02cbfe37",
+                        "title": "Reverse Hyper",
+                        "videoUrl": "https://cdn.example.com/rev_hyper.mp4",
+                        "tags": []
+                      }
+                    }
+                  ]
+                }
               ]
             },
             {
               "dayIndex": 2,
               "items": [
-                { "id": "...", "title": "Bench Press", "order": 1 }
+                {
+                  "id": "...",
+                  "order": 1,
+                  "sets": 5,
+                  "repeats": 5,
+                  "isSuperset": false,
+                  "trainingVideo": { "id": "...", "title": "Bench Press", "videoUrl": "https://cdn.example.com/bench.mp4", 
+                  "supersetItems": []
+                }
               ]
             }
           ]

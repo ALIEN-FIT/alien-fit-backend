@@ -6,15 +6,21 @@ import { TrainingPlanEntity } from './entity/training-plan.entity.js';
 import { Roles } from '../../../../constants/roles.js';
 import { UserEntity } from '../../../user/v1/entity/user.entity.js';
 import { addWeeks, startOfDayUTC } from '../../../../utils/date.utils.js';
+import { TrainingVideoService } from '../../../training-video/v1/training-video.service.js';
+import { TrainingVideoEntity } from '../../../training-video/v1/entity/training-video.entity.js';
+
+interface SupersetItemInput {
+    trainingVideoId: string;
+    sets: number;
+    repeats: number;
+}
 
 interface TrainingPlanItemInput {
-    title: string;
-    videoLink?: string;
-    description?: string;
-    duration?: number;
-    repeats?: number;
+    trainingVideoId: string;
+    sets: number;
+    repeats: number;
     isSuperset?: boolean;
-    supersetExercises?: Array<Record<string, unknown>>;
+    supersetItems?: SupersetItemInput[];
 }
 
 interface TrainingPlanDayInput {
@@ -50,7 +56,10 @@ export class TrainingPlanService {
             throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Template must include exactly 7 days');
         }
 
-        const normalizedTemplate = this.normalizeTemplate(payload.days);
+        const videoIds = this.collectVideoIds(payload.days);
+        const trainingVideosMap = await TrainingVideoService.ensureVideosExist(videoIds);
+
+        const normalizedTemplate = this.normalizeTemplate(payload.days, trainingVideosMap);
         const daysPayload = this.buildDaysPayload(normalizedStart, normalizedTemplate);
 
         await TrainingPlanRepository.createPlan(userId, normalizedStart, endDate, daysPayload);
@@ -70,31 +79,75 @@ export class TrainingPlanService {
         return plan;
     }
 
-    private static normalizeTemplate(days: TrainingPlanDayInput[]): TrainingPlanItemInput[][] {
-        const template: TrainingPlanItemInput[][] = Array.from({ length: 7 }, () => []);
+    private static collectVideoIds(days: TrainingPlanDayInput[]): string[] {
+        const ids = new Set<string>();
+        for (const day of days) {
+            for (const item of day.items ?? []) {
+                ids.add(item.trainingVideoId);
+                if (item.isSuperset) {
+                    for (const superset of item.supersetItems ?? []) {
+                        ids.add(superset.trainingVideoId);
+                    }
+                }
+            }
+        }
+        return Array.from(ids);
+    }
+
+    private static normalizeTemplate(
+        days: TrainingPlanDayInput[],
+        videoMap: Map<string, TrainingVideoEntity>,
+    ): NormalizedTrainingPlanItem[][] {
+        const template: NormalizedTrainingPlanItem[][] = Array.from({ length: 7 }, () => []);
 
         days.forEach((day, index) => {
             const position = day.dayNumber ? day.dayNumber - 1 : index;
             if (position < 0 || position > 6) {
                 throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'dayNumber must be between 1 and 7');
             }
-            template[position] = day.items?.map((item) => ({
-                title: item.title,
-                videoLink: item.videoLink ?? null,
-                description: item.description ?? null,
-                duration: item.duration ?? null,
-                repeats: item.repeats ?? null,
-                isSuperset: Boolean(item.isSuperset),
-                supersetExercises: item.isSuperset ? item.supersetExercises ?? [] : null,
-            })) ?? [];
+            template[position] = day.items?.map((item) => this.normalizeItem(item, videoMap)) ?? [];
         });
 
         return template;
     }
 
+    private static normalizeItem(
+        item: TrainingPlanItemInput,
+        videoMap: Map<string, TrainingVideoEntity>,
+    ): NormalizedTrainingPlanItem {
+        const video = videoMap.get(item.trainingVideoId);
+        if (!video) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${item.trainingVideoId}`);
+        }
+
+        let supersetItems: SupersetItemInput[] | null = null;
+        if (item.isSuperset) {
+            supersetItems = (item.supersetItems ?? []).map((superset) => {
+                const supersetVideo = videoMap.get(superset.trainingVideoId);
+                if (!supersetVideo) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${superset.trainingVideoId}`);
+                }
+                return {
+                    trainingVideoId: superset.trainingVideoId,
+                    sets: superset.sets,
+                    repeats: superset.repeats,
+                };
+            });
+        }
+
+        return {
+            trainingVideoId: item.trainingVideoId,
+            sets: item.sets,
+            repeats: item.repeats,
+            isSuperset: Boolean(item.isSuperset),
+            supersetItems,
+            trainingVideo: video,
+        };
+    }
+
     private static buildDaysPayload(
         startDate: Date,
-        template: TrainingPlanItemInput[][],
+        template: NormalizedTrainingPlanItem[][],
     ) {
         return Array.from({ length: 28 }, (_, index) => {
             const date = new Date(startDate);
@@ -103,13 +156,15 @@ export class TrainingPlanService {
 
             const items = templateItems.map((item, orderIndex) => ({
                 order: orderIndex + 1,
-                title: item.title,
-                videoLink: item.videoLink ?? null,
-                description: item.description ?? null,
-                duration: item.duration ?? null,
-                repeats: item.repeats ?? null,
+                title: item.trainingVideo.title,
+                videoLink: item.trainingVideo.videoUrl,
+                description: item.trainingVideo.description ?? null,
+                duration: null,
+                repeats: item.repeats,
+                sets: item.sets,
+                trainingVideoId: item.trainingVideoId,
                 isSuperset: Boolean(item.isSuperset),
-                supersetExercises: item.isSuperset ? item.supersetExercises ?? [] : null,
+                supersetItems: item.isSuperset ? item.supersetItems ?? [] : null,
             }));
 
             return {
@@ -120,4 +175,13 @@ export class TrainingPlanService {
             };
         });
     }
+}
+
+interface NormalizedTrainingPlanItem {
+    trainingVideoId: string;
+    sets: number;
+    repeats: number;
+    isSuperset: boolean;
+    supersetItems: SupersetItemInput[] | null;
+    trainingVideo: TrainingVideoEntity;
 }

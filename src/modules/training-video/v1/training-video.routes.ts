@@ -1,0 +1,98 @@
+import express from 'express';
+import { auth, authorizeRoles } from '../../../middleware/authorization.middleware.js';
+import { Roles } from '../../../constants/roles.js';
+import { validateRequest } from '../../../middleware/validation.middleware.js';
+import {
+    createTrainingVideoController,
+    deleteTrainingVideoController,
+    getTrainingVideoController,
+    listTrainingVideosController,
+    updateTrainingVideoController,
+    createTrainingTagController,
+    deleteTrainingTagController,
+    getTrainingTagController,
+    listTrainingTagsController,
+    updateTrainingTagController,
+} from './training-video.controller.js';
+import {
+    createTrainingVideoSchema,
+    updateTrainingVideoSchema,
+    trainingVideoParamSchema,
+    listTrainingVideoQuerySchema,
+    createTrainingTagSchema,
+    updateTrainingTagSchema,
+    trainingTagParamSchema,
+    listTrainingTagQuerySchema,
+} from './training-video.validation.js';
+
+export const trainingVideoRouterV1 = express.Router();
+
+trainingVideoRouterV1.use(auth);
+
+trainingVideoRouterV1.post(
+    '/',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(createTrainingVideoSchema),
+    createTrainingVideoController,
+);
+
+trainingVideoRouterV1.get(
+    '/',
+    validateRequest(listTrainingVideoQuerySchema),
+    listTrainingVideosController,
+);
+
+
+trainingVideoRouterV1.post(
+    '/tags',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(createTrainingTagSchema),
+    createTrainingTagController,
+);
+
+trainingVideoRouterV1.get(
+    '/tags',
+    validateRequest(listTrainingTagQuerySchema),
+    listTrainingTagsController,
+);
+
+trainingVideoRouterV1.get(
+    '/tags/:tagId',
+    validateRequest(trainingTagParamSchema),
+    getTrainingTagController,
+);
+
+trainingVideoRouterV1.patch(
+    '/tags/:tagId',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(updateTrainingTagSchema.concat(trainingTagParamSchema)),
+    updateTrainingTagController,
+);
+
+trainingVideoRouterV1.delete(
+    '/tags/:tagId',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(trainingTagParamSchema),
+    deleteTrainingTagController,
+);
+
+
+trainingVideoRouterV1.get(
+    '/:videoId',
+    validateRequest(trainingVideoParamSchema),
+    getTrainingVideoController,
+);
+
+trainingVideoRouterV1.patch(
+    '/:videoId',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(updateTrainingVideoSchema.concat(trainingVideoParamSchema)),
+    updateTrainingVideoController,
+);
+
+trainingVideoRouterV1.delete(
+    '/:videoId',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(trainingVideoParamSchema),
+    deleteTrainingVideoController,
+);

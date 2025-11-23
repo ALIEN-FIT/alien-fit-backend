@@ -34,11 +34,28 @@ interface WaterPayload {
 }
 
 function toDateOnly(dateInput: string | Date): Date {
-    const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    let date: Date;
+
+    if (dateInput instanceof Date) {
+        date = dateInput;
+    } else if (typeof dateInput === 'string') {
+        // Parse date string as YYYY-MM-DD in UTC to avoid timezone shifts
+        const match = dateInput.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) {
+            const [, year, month, day] = match;
+            date = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+        } else {
+            date = new Date(dateInput);
+        }
+    } else {
+        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Invalid date value');
+    }
+
     if (Number.isNaN(date.getTime())) {
         throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Invalid date value');
     }
-    return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
 async function resolveTrainingPlanItemForUser(userId: string, planItemId: string) {
@@ -69,7 +86,7 @@ async function resolveTrainingPlanItemForUser(userId: string, planItemId: string
 }
 
 async function resolveDietMealItemForUser(userId: string, mealItemId: string) {
-    const meal:any = await DietMealItemEntity.findByPk(mealItemId, {
+    const meal: any = await DietMealItemEntity.findByPk(mealItemId, {
         include: [
             {
                 model: DietPlanDayEntity,

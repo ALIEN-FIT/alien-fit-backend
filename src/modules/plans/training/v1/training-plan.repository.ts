@@ -1,6 +1,7 @@
 import { Transaction } from 'sequelize';
 import { sequelize } from '../../../../database/db-config.js';
 import { TrainingPlanEntity, TrainingPlanDayEntity, TrainingPlanItemEntity } from './entity/training-plan.entity.js';
+import { TrainingVideoEntity, TrainingTagEntity } from '../../../training-video/v1/entity/training-video.entity.js';
 
 export class TrainingPlanRepository {
     static findByUserId(userId: string) {
@@ -14,6 +15,19 @@ export class TrainingPlanRepository {
                         {
                             model: TrainingPlanItemEntity,
                             as: 'items',
+                            include: [
+                                {
+                                    model: TrainingVideoEntity,
+                                    as: 'trainingVideo',
+                                    include: [
+                                        {
+                                            model: TrainingTagEntity,
+                                            as: 'tags',
+                                            through: { attributes: [] },
+                                        },
+                                    ],
+                                },
+                            ],
                         },
                     ],
                 },
@@ -49,8 +63,10 @@ export class TrainingPlanRepository {
                 description: string | null;
                 duration: number | null;
                 repeats: number | null;
+                sets: number;
+                trainingVideoId: string;
                 isSuperset: boolean;
-                supersetExercises: Array<Record<string, unknown>> | null;
+                supersetItems: Array<Record<string, unknown>> | null;
             }>;
         }>,
     ) {
