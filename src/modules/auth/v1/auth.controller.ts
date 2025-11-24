@@ -9,6 +9,8 @@ import { googleClient } from '../../../config/google-client.js';
 import { UserSessionEntity } from '../../user-session/v1/entity/user-session.entity.js';
 import { errorLogger } from '../../../config/logger.config.js';
 import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
+import { UserProfileService } from '../../user-profile/v1/user-profile.service.js';
+import { UserProfileEntity } from '../../user-profile/v1/model/user-profile.model.js';
 
 
 export async function loginController(req: Request, res: Response): Promise<void> {
@@ -145,15 +147,33 @@ export async function changePasswordController(req: Request, res: Response): Pro
 
 export async function getMeController(req: Request, res: Response): Promise<void> {
     const user = req.user as UserEntity;
-    const subscriptionStatus = await SubscriptionService.getStatus(user.id.toString());
+    const userId = user.id.toString();
+
+    const [subscriptionStatus, profile] = await Promise.all([
+        SubscriptionService.getStatus(userId),
+        getUserProfileOrNull(userId),
+    ]);
     res.status(StatusCodes.OK).json({
         status: 'success',
         data: {
             user: user.toJSON(),
             isSubscribed: subscriptionStatus.isSubscribed,
             profileUpdateRequired: subscriptionStatus.profileUpdateRequired,
+            subscriptionStatus,
+            profile,
         }
     });
+}
+
+async function getUserProfileOrNull(userId: string): Promise<UserProfileEntity | null> {
+    try {
+        return await UserProfileService.getUserProfile(userId);
+    } catch (error) {
+        if (error instanceof HttpResponseError && error.statusCode === StatusCodes.NOT_FOUND) {
+            return null;
+        }
+        throw error;
+    }
 }
 
 export async function updateMeController(req: Request, res: Response): Promise<void> {

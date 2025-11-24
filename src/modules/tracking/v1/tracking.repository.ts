@@ -17,4 +17,17 @@ export class TrackingRepository {
         });
         return record;
     }
+
+    static async findByUserAndDates(userId: string, dates: Array<string>): Promise<DailyTrackingEntity[]> {
+        if (!dates.length) {
+            return [];
+        }
+
+        return DailyTrackingEntity.findAll({
+            where: {
+                userId,
+                date: Array.from(new Set(dates)),
+            },
+        });
+    }
 }

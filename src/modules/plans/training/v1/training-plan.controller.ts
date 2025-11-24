@@ -2,8 +2,11 @@ import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { TrainingPlanService } from './training-plan.service.js';
 import { TrainingPlanEntity } from './entity/training-plan.entity.js';
+import { UserEntity } from '../../../user/v1/entity/user.entity.js';
 import { TrainingVideoService } from '../../../training-video/v1/training-video.service.js';
 import { TrainingVideoEntity } from '../../../training-video/v1/entity/training-video.entity.js';
+import { TrackingRepository } from '../../../tracking/v1/tracking.repository.js';
+import { DailyTrackingEntity } from '../../../tracking/v1/entity/daily-tracking.entity.js';
 
 interface SerializedTrainingPlan {
     id: string;
@@ -15,6 +18,7 @@ interface SerializedTrainingPlan {
         days: Array<{
             dayIndex: number;
             date: Date;
+            isDone: boolean;
             items: Array<SerializedTrainingPlanItem>;
         }>;
     }>;
@@ -26,6 +30,7 @@ interface SerializedTrainingPlanItem {
     sets: number | null;
     repeats: number | null;
     isSuperset: boolean;
+    isDone: boolean;
     trainingVideo: SerializedTrainingVideo | null;
     supersetItems: Array<SerializedSupersetItem>;
 }
@@ -54,11 +59,17 @@ async function serializeTrainingPlan(plan: TrainingPlanEntity): Promise<Serializ
     const json = plan.toJSON() as any;
     const weeksMap = new Map<number, WeekAccumulator>();
     const supersetVideoIds = new Set<string>();
+    const trackingMap = await buildTrackingMap(json.userId, json.days ?? []);
 
     for (const day of json.days ?? []) {
         if (!weeksMap.has(day.weekNumber)) {
             weeksMap.set(day.weekNumber, { weekNumber: day.weekNumber, days: [] });
         }
+
+        const dayDateKey = toDateOnlyString(day.date);
+        const isDone = trackingMap.get(dayDateKey)?.trainingDone ?? false;
+
+        const completedIds = new Set<string>(trackingMap.get(dayDateKey)?.trainingCompletedItemIds ?? []);
 
         const items = (day.items ?? []).map((item) => {
             for (const superset of item.supersetItems ?? []) {
@@ -73,6 +84,7 @@ async function serializeTrainingPlan(plan: TrainingPlanEntity): Promise<Serializ
                 sets: item.sets ?? null,
                 repeats: item.repeats ?? null,
                 isSuperset: item.isSuperset,
+                isDone: completedIds.has(item.id),
                 trainingVideo: item.trainingVideo as TrainingVideoEntity | undefined,
                 supersetItems: item.supersetItems ?? [],
             } as RawTrainingPlanItem;
@@ -81,6 +93,7 @@ async function serializeTrainingPlan(plan: TrainingPlanEntity): Promise<Serializ
         weeksMap.get(day.weekNumber)!.days.push({
             dayIndex: day.dayIndex,
             date: day.date,
+            isDone,
             items,
         });
     }
@@ -104,12 +117,14 @@ async function serializeTrainingPlan(plan: TrainingPlanEntity): Promise<Serializ
             days: week.days.map((day) => ({
                 dayIndex: day.dayIndex,
                 date: day.date,
+                isDone: day.isDone,
                 items: day.items.map((item) => ({
                     id: item.id,
                     order: item.order,
                     sets: item.sets,
                     repeats: item.repeats,
                     isSuperset: item.isSuperset,
+                    isDone: item.isDone,
                     trainingVideo: serializeVideo(item.trainingVideo),
                     supersetItems: item.supersetItems.map((superset) => ({
                         trainingVideoId: superset.trainingVideoId,
@@ -137,6 +152,17 @@ export async function createTrainingPlanWeekController(req: Request, res: Respon
 export async function getTrainingPlanController(req: Request, res: Response): Promise<void> {
     const { userId } = req.params;
     const plan = await TrainingPlanService.getTrainingPlan(req.user!, userId);
+    const trainingPlan = await serializeTrainingPlan(plan);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { trainingPlan },
+    });
+}
+
+export async function getMyTrainingPlanController(req: Request, res: Response): Promise<void> {
+    const user = req.user as UserEntity;
+    const plan = await TrainingPlanService.getTrainingPlan(user, user.id.toString());
     const trainingPlan = await serializeTrainingPlan(plan);
 
     res.status(StatusCodes.OK).json({
@@ -177,6 +203,7 @@ interface RawTrainingPlanItem {
     sets: number | null;
     repeats: number | null;
     isSuperset: boolean;
+    isDone: boolean;
     trainingVideo?: TrainingVideoEntity;
     supersetItems: Array<{ trainingVideoId: string; sets: number; repeats: number }>;
 }
@@ -186,6 +213,32 @@ interface WeekAccumulator {
     days: Array<{
         dayIndex: number;
         date: Date;
+        isDone: boolean;
         items: RawTrainingPlanItem[];
     }>;
+}
+
+async function buildTrackingMap(
+    userId: string,
+    days: Array<{ date: Date | string }>,
+): Promise<Map<string, DailyTrackingEntity>> {
+    const dateStrings = Array.from(new Set(days.map((day) => toDateOnlyString(day.date))));
+    const trackings = await TrackingRepository.findByUserAndDates(userId, dateStrings);
+    const map = new Map<string, DailyTrackingEntity>();
+    for (const tracking of trackings) {
+        map.set(toDateOnlyString(tracking.date as Date | string), tracking);
+    }
+    return map;
+}
+
+function toDateOnlyString(date: Date | string): string {
+    if (date instanceof Date) {
+        return date.toISOString().split('T')[0];
+    }
+    const match = typeof date === 'string' ? date.match(/^\d{4}-\d{2}-\d{2}/) : null;
+    if (match) {
+        return match[0];
+    }
+    const parsed = new Date(date);
+    return Number.isNaN(parsed.getTime()) ? String(date) : parsed.toISOString().split('T')[0];
 }

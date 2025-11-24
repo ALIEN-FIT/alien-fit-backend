@@ -22,9 +22,9 @@ export class AuthService {
         }
 
         const isValidPassword = await comparePasswords(password, user.password);
-        // if (!isValidPassword) {
-        //     throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Invalid credentials');
-        // }
+        if (!isValidPassword) {
+            throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Invalid credentials');
+        }
 
         const userSession = await UserSessionEntity.create({ userId: user.id });
 

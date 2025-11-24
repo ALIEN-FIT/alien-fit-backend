@@ -5,6 +5,7 @@ import { validateRequest } from '../../../../middleware/validation.middleware.js
 import {
     createTrainingPlanWeekController,
     getTrainingPlanController,
+    getMyTrainingPlanController,
 } from './training-plan.controller.js';
 import {
     createTrainingPlanSchema,
@@ -20,6 +21,11 @@ trainingPlanRouterV1.post(
     authorizeRoles(Roles.ADMIN),
     validateRequest(createTrainingPlanSchema.concat(trainingPlanUserParamSchema)),
     createTrainingPlanWeekController,
+);
+
+trainingPlanRouterV1.get(
+    '/me',
+    getMyTrainingPlanController,
 );
 
 trainingPlanRouterV1.get(

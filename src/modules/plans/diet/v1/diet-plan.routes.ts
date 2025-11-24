@@ -5,6 +5,7 @@ import { validateRequest } from '../../../../middleware/validation.middleware.js
 import {
     createDietPlanWeekController,
     getDietPlanController,
+    getMyDietPlanController,
 } from './diet-plan.controller.js';
 import {
     createDietPlanSchema,
@@ -20,6 +21,11 @@ dietPlanRouterV1.post(
     authorizeRoles(Roles.ADMIN),
     validateRequest(createDietPlanSchema.concat(dietPlanUserParamSchema)),
     createDietPlanWeekController,
+);
+
+dietPlanRouterV1.get(
+    '/me',
+    getMyDietPlanController,
 );
 
 dietPlanRouterV1.get(
