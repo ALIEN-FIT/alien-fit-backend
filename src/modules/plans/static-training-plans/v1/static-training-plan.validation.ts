@@ -28,18 +28,24 @@ const trainingPlanDaySchema = Joi.object({
 
 export const createStaticTrainingPlanSchema = Joi.object({
     name: Joi.string().trim().required(),
-    description: Joi.string().trim().required(),
+    subTitle: Joi.string().trim().optional(),
+    description: Joi.string().trim().optional(),
     imageId: JoiCustomValidateObjectId('Image ID'),
+    durationInMinutes: Joi.number().integer().positive().optional(),
+    level: Joi.string().trim().optional(),
     days: Joi.array().length(7).items(trainingPlanDaySchema).required(),
 }).unknown(false);
 
 export const updateStaticTrainingPlanSchema = Joi.object({
     name: Joi.string().trim().optional(),
+    subTitle: Joi.string().trim().optional(),
     description: Joi.string().trim().optional(),
     imageId: JoiCustomValidateObjectId('Image ID', true),
+    durationInMinutes: Joi.number().integer().positive().optional(),
+    level: Joi.string().trim().optional(),
     days: Joi.array().length(7).items(trainingPlanDaySchema).optional(),
 })
-    .or('name', 'description', 'imageId', 'days')
+    .or('name', 'subTitle', 'description', 'imageId', 'durationInMinutes', 'level', 'days')
     .unknown(false);
 
 export const staticTrainingPlanParamSchema = Joi.object({

@@ -68,20 +68,23 @@ export class StaticTrainingPlanRepository {
 
     static listPlans() {
         return StaticTrainingPlanEntity.findAll({
-            attributes: ['id', 'name', 'description', 'imageId', 'createdAt', 'updatedAt'],
+            attributes: ['id', 'name', 'subTitle', 'description', 'imageId', 'durationInMinutes', 'level', 'createdAt', 'updatedAt'],
             order: [['createdAt', 'desc']],
         });
     }
 
     static async createPlan(
         name: string,
+        subTitle: string | null,
         description: string | null,
         imageId: string,
+        durationInMinutes: number | null,
+        level: string | null,
         days: StaticTrainingPlanDayPayload[],
     ) {
         return sequelize.transaction(async (transaction) => {
             const plan = await StaticTrainingPlanEntity.create(
-                { name, description, imageId },
+                { name, subTitle, description, imageId, durationInMinutes, level },
                 { transaction },
             );
 
@@ -92,7 +95,7 @@ export class StaticTrainingPlanRepository {
 
     static async updatePlan(
         planId: string,
-        meta: { name?: string; description?: string | null; imageId?: string },
+        meta: { name?: string; subTitle?: string | null; description?: string | null; imageId?: string; durationInMinutes?: number | null; level?: string | null },
         days?: StaticTrainingPlanDayPayload[],
     ) {
         return sequelize.transaction(async (transaction) => {

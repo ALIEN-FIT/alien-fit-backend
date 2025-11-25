@@ -27,8 +27,11 @@ Host: example.com
             {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "name": "Beginner Plan",
+                "subTitle": "Perfect for getting started",
                 "description": "A 7-day beginner-friendly training plan.",
                 "imageId": "456e7890-e12b-34d5-c678-526614174111",
+                "durationInMinutes": 45,
+                "level": "Beginner",
                 "createdAt": "2025-11-25T12:00:00.000Z",
                 "updatedAt": "2025-11-25T12:00:00.000Z"
             }
@@ -59,8 +62,11 @@ Host: example.com
         "staticTrainingPlan": {
             "id": "123e4567-e89b-12d3-a456-426614174000",
             "name": "Beginner Plan",
+            "subTitle": "Perfect for getting started",
             "description": "A 7-day beginner-friendly training plan.",
             "imageId": "456e7890-e12b-34d5-c678-526614174111",
+            "durationInMinutes": 45,
+            "level": "Beginner",
             "weeks": [
                 {
                     "weekNumber": 1,
@@ -111,8 +117,11 @@ Authorization: Bearer <admin-token>
 
 {
     "name": "Advanced Plan",
+    "subTitle": "For experienced athletes",
     "description": "A challenging 7-day training plan for advanced users.",
     "imageId": "789e1234-e56b-78d9-f012-626614174222",
+    "durationInMinutes": 60,
+    "level": "Advanced",
     "days": [
         {
             "dayNumber": 1,
@@ -141,8 +150,11 @@ Authorization: Bearer <admin-token>
         "staticTrainingPlan": {
             "id": "789e1234-e56b-78d9-f012-626614174333",
             "name": "Advanced Plan",
+            "subTitle": "For experienced athletes",
             "description": "A challenging 7-day training plan for advanced users.",
             "imageId": "789e1234-e56b-78d9-f012-626614174222",
+            "durationInMinutes": 60,
+            "level": "Advanced",
             "weeks": []
         }
     }
@@ -166,7 +178,10 @@ Authorization: Bearer <admin-token>
 
 {
     "name": "Updated Advanced Plan",
-    "description": "An updated description for the advanced plan."
+    "subTitle": "Now with more intensity",
+    "description": "An updated description for the advanced plan.",
+    "durationInMinutes": 75,
+    "level": "Expert"
 }
 ```
 
@@ -178,8 +193,11 @@ Authorization: Bearer <admin-token>
         "staticTrainingPlan": {
             "id": "789e1234-e56b-78d9-f012-626614174333",
             "name": "Updated Advanced Plan",
+            "subTitle": "Now with more intensity",
             "description": "An updated description for the advanced plan.",
             "imageId": "789e1234-e56b-78d9-f012-626614174222",
+            "durationInMinutes": 75,
+            "level": "Expert",
             "weeks": []
         }
     }

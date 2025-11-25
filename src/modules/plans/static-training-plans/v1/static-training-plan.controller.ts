@@ -8,8 +8,11 @@ import { TrainingVideoService } from '../../../training-video/v1/training-video.
 interface SerializedStaticTrainingPlan {
     id: string;
     name: string;
+    subTitle: string | null;
     description: string | null;
     imageId: string;
+    durationInMinutes: number | null;
+    level: string | null;
     weeks: Array<{
         weekNumber: number;
         days: Array<SerializedStaticPlanDay>;
@@ -100,8 +103,11 @@ async function serializeStaticPlan(plan: StaticTrainingPlanEntity): Promise<Seri
     return {
         id: json.id,
         name: json.name,
+        subTitle: json.subTitle ?? null,
         description: json.description ?? null,
         imageId: json.imageId,
+        durationInMinutes: json.durationInMinutes ?? null,
+        level: json.level ?? null,
         weeks: weeks.map((week) => ({
             weekNumber: week.weekNumber,
             days: week.days.map((day) => ({
@@ -161,8 +167,11 @@ export async function listStaticTrainingPlansController(req: Request, res: Respo
             plans: plans.map((plan) => ({
                 id: plan.id,
                 name: plan.name,
+                subTitle: plan.subTitle,
                 description: plan.description,
                 imageId: plan.imageId,
+                durationInMinutes: plan.durationInMinutes,
+                level: plan.level,
                 createdAt: plan.createdAt,
                 updatedAt: plan.updatedAt,
             })),

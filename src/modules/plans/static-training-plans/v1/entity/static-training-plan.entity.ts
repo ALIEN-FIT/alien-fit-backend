@@ -5,8 +5,11 @@ import { TrainingVideoEntity } from '../../../../training-video/v1/entity/traini
 export class StaticTrainingPlanEntity extends Model {
     declare id: string;
     declare name: string;
+    declare subTitle: string | null;
     declare description: string | null;
     declare imageId: string;
+    declare durationInMinutes: number | null;
+    declare level: string | null;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -51,6 +54,10 @@ StaticTrainingPlanEntity.init(
             type: DataTypes.STRING,
             allowNull: false,
         },
+        subTitle: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
         description: {
             type: DataTypes.TEXT,
             allowNull: true,
@@ -58,6 +65,14 @@ StaticTrainingPlanEntity.init(
         imageId: {
             type: DataTypes.UUID,
             allowNull: false,
+        },
+        durationInMinutes: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+        },
+        level: {
+            type: DataTypes.STRING,
+            allowNull: true,
         },
     },
     {

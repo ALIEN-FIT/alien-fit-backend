@@ -30,15 +30,21 @@ interface StaticTrainingPlanDayInput {
 
 interface CreateStaticTrainingPlanPayload {
     name: string;
+    subTitle?: string | null;
     description?: string | null;
     imageId: string;
+    durationInMinutes?: number | null;
+    level?: string | null;
     days: StaticTrainingPlanDayInput[];
 }
 
 interface UpdateStaticTrainingPlanPayload {
     name?: string;
+    subTitle?: string | null;
     description?: string | null;
     imageId?: string;
+    durationInMinutes?: number | null;
+    level?: string | null;
     days?: StaticTrainingPlanDayInput[];
 }
 
@@ -53,8 +59,11 @@ export class StaticTrainingPlanService {
 
         const plan = await StaticTrainingPlanRepository.createPlan(
             payload.name,
+            payload.subTitle ?? null,
             payload.description ?? null,
             payload.imageId,
+            payload.durationInMinutes ?? null,
+            payload.level ?? null,
             daysPayload,
         );
 
@@ -69,15 +78,24 @@ export class StaticTrainingPlanService {
     static async updateStaticPlan(actor: UserEntity, planId: string, payload: UpdateStaticTrainingPlanPayload) {
         this.ensureAdmin(actor);
 
-        const meta: { name?: string; description?: string | null; imageId?: string } = {};
+        const meta: { name?: string; subTitle?: string | null; description?: string | null; imageId?: string; durationInMinutes?: number | null; level?: string | null } = {};
         if (payload.name !== undefined) {
             meta.name = payload.name;
+        }
+        if (payload.subTitle !== undefined) {
+            meta.subTitle = payload.subTitle ?? null;
         }
         if (payload.description !== undefined) {
             meta.description = payload.description ?? null;
         }
         if (payload.imageId !== undefined) {
             meta.imageId = payload.imageId;
+        }
+        if (payload.durationInMinutes !== undefined) {
+            meta.durationInMinutes = payload.durationInMinutes ?? null;
+        }
+        if (payload.level !== undefined) {
+            meta.level = payload.level ?? null;
         }
 
         let daysPayload: StaticTrainingPlanDayPayload[] | undefined;
