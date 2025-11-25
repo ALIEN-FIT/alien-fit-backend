@@ -62,7 +62,7 @@ export class TrainingPlanService {
         const normalizedTemplate = this.normalizeTemplate(payload.days, trainingVideosMap);
         const daysPayload = this.buildDaysPayload(normalizedStart, normalizedTemplate);
 
-        await TrainingPlanRepository.createPlan(userId, normalizedStart, endDate, daysPayload);
+        await TrainingPlanRepository.createPlan(userId, normalizedStart, endDate, daysPayload as any);
 
         return this.getTrainingPlan(actor, userId);
     }
