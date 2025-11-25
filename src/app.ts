@@ -20,6 +20,7 @@ import { subscriptionRouterV1 } from './modules/subscription/v1/subscription.rou
 import { planUpdateRequestRouterV1 } from './modules/requests/v1/plan-update-request.routes.js';
 import { trainingPlanRouterV1 } from './modules/plans/training/v1/training-plan.routes.js';
 import { dietPlanRouterV1 } from './modules/plans/diet/v1/diet-plan.routes.js';
+import { staticTrainingPlanRouterV1 } from './modules/plans/static-training-plans/v1/static-training-plan.routes.js';
 import { trackingRouterV1 } from './modules/tracking/v1/tracking.routes.js';
 import { trainingVideoRouterV1 } from './modules/training-video/v1/training-video.routes.js';
 
@@ -60,6 +61,7 @@ export function initializeApp(app: express.Application) {
     app.use('/api/v1/subscription', subscriptionRouterV1);
     app.use('/api/v1/plans/requests', planUpdateRequestRouterV1);
     app.use('/api/v1/plans/training', trainingPlanRouterV1);
+    app.use('/api/v1/plans/static-training-plans', staticTrainingPlanRouterV1);
     app.use('/api/v1/plans/diet', dietPlanRouterV1);
     app.use('/api/v1/tracking', trackingRouterV1);
     app.use('/api/v1/training-videos', trainingVideoRouterV1);
