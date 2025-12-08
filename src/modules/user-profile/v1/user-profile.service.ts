@@ -80,7 +80,12 @@ export class UserProfileService {
 
     await SubscriptionService.recordProfileUpdate(userId);
 
-    return { profile, isProfileComplete, action: 'updated' };
+    const request = await PlanUpdateRequestService.ensurePendingProfileUpdateRequest(
+      userId,
+      profileData ? { profileData } : null
+    );
+
+    return { profile, isProfileComplete, action: 'updated', planUpdateRequestId: request.id };
   }
 
   static async deleteUserProfile(userId: string | number): Promise<UserProfileEntity> {
