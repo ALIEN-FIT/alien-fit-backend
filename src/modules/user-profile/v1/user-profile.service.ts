@@ -53,14 +53,10 @@ export class UserProfileService {
     if (!isAdmin && isSelfUpdate) {
       const subscriptionStatus = await SubscriptionService.getStatus(userId);
       if (!subscriptionStatus.isSubscribed) {
-        const request = await PlanUpdateRequestService.ensurePendingProfileUpdateRequest(
-          userId,
-          profileData ? { profileData } : null
+        throw new HttpResponseError(
+          StatusCodes.FORBIDDEN,
+          'Profile updates are only available for subscribed users'
         );
-        return {
-          action: 'request-created',
-          planUpdateRequestId: request.id,
-        };
       }
 
       const nextDue = subscriptionStatus.subscription?.nextProfileUpdateDue;
