@@ -58,14 +58,6 @@ export class UserProfileService {
           'Profile updates are only available for subscribed users'
         );
       }
-
-      const nextDue = subscriptionStatus.subscription?.nextProfileUpdateDue;
-      if (nextDue && nextDue.getTime() > Date.now()) {
-        throw new HttpResponseError(
-          StatusCodes.FORBIDDEN,
-          'Profile update is not yet available. Please wait for the next update window.'
-        );
-      }
     }
 
     let profile = await UserProfileEntity.findOne({ where: { userId } });
