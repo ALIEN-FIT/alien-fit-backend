@@ -2,7 +2,7 @@ import { StatusCodes } from 'http-status-codes';
 import { HttpResponseError } from '../../../utils/appError.js';
 import { UserEntity } from '../../user/v1/entity/user.entity.js';
 import { TrackingRepository } from './tracking.repository.js';
-import { DailyTrackingEntity, ExtraFoodEntry, ExtraTrainingEntry } from './entity/daily-tracking.entity.js';
+import { DailyTrackingEntity, ExtraFoodEntry, ExtraTrainingEntry, WaterIntakeRecord } from './entity/daily-tracking.entity.js';
 import { TrainingPlanItemEntity, TrainingPlanDayEntity, TrainingPlanEntity } from '../../plans/training/v1/entity/training-plan.entity.js';
 import { DietMealItemEntity, DietPlanDayEntity, DietPlanEntity } from '../../plans/diet/v1/entity/diet-plan.entity.js';
 
@@ -31,6 +31,12 @@ interface ExtraFoodPayload {
 interface WaterPayload {
     date: string;
     amountMl: number;
+}
+
+interface WaterIntakeDaySummary {
+    date: string;
+    totalIntake: number;
+    records: WaterIntakeRecord[];
 }
 
 function toDateOnly(dateInput: string | Date): Date {
@@ -198,7 +204,13 @@ export class TrackingService {
         const date = toDateOnly(payload.date);
         const tracking = await TrackingRepository.findOrCreate(user.id, date);
         const waterIntakeMl = (tracking.waterIntakeMl ?? 0) + payload.amountMl;
-        await tracking.update({ waterIntakeMl });
+        const waterIntakeRecords = tracking.waterIntakeRecords ?? [];
+        const record: WaterIntakeRecord = {
+            intakeMl: payload.amountMl,
+            time: new Date().toISOString(),
+        };
+        waterIntakeRecords.push(record);
+        await tracking.update({ waterIntakeMl, waterIntakeRecords });
         return tracking;
     }
 
@@ -212,6 +224,7 @@ export class TrackingService {
                 trainingDone: false,
                 dietDone: false,
                 waterIntakeMl: 0,
+                waterIntakeRecords: [],
                 trainingCompletedItemIds: [],
                 dietCompletedItemIds: [],
                 extraTrainingEntries: [],
@@ -219,5 +232,31 @@ export class TrackingService {
             });
         }
         return tracking;
+    }
+
+    static async getLast30DaysWaterIntake(user: UserEntity): Promise<WaterIntakeDaySummary[]> {
+        const today = toDateOnly(new Date());
+        const dates: string[] = [];
+
+        for (let i = 0; i < 30; i += 1) {
+            const date = new Date(today);
+            date.setUTCDate(today.getUTCDate() - i);
+            dates.push(date.toISOString().split('T')[0]);
+        }
+
+        const records = await TrackingRepository.findByUserAndDates(user.id, dates);
+        const byDate = new Map<string, DailyTrackingEntity>();
+        records.forEach((item) => byDate.set(item.date.toString(), item));
+
+        return dates
+            .reverse()
+            .map((date) => {
+                const record = byDate.get(date);
+                return {
+                    date,
+                    totalIntake: record?.waterIntakeMl ?? 0,
+                    records: record?.waterIntakeRecords ?? [],
+                };
+            });
     }
 }

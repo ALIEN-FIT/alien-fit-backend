@@ -13,6 +13,8 @@ export class TrackingRepository {
             defaults: {
                 userId,
                 date: dateOnly,
+                waterIntakeMl: 0,
+                waterIntakeRecords: [],
             },
         });
         return record;

@@ -8,6 +8,7 @@ import {
     logExtraFoodController,
     logWaterIntakeController,
     getDailyStatusController,
+    getLast30DaysWaterIntakeController,
 } from './tracking.controller.js';
 import {
     markTrainingDoneSchema,
@@ -51,6 +52,8 @@ trackingRouterV1.post(
     validateRequest(waterIntakeSchema),
     logWaterIntakeController,
 );
+
+trackingRouterV1.get('/water/last-30-days', getLast30DaysWaterIntakeController);
 
 trackingRouterV1.get(
     '/daily-status/:date',

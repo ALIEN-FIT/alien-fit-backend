@@ -10,6 +10,7 @@ function serializeTracking(record) {
         trainingDone: json.trainingDone,
         dietDone: json.dietDone,
         waterIntakeMl: json.waterIntakeMl,
+        waterIntakeRecords: json.waterIntakeRecords ?? [],
         trainingCompletedItemIds: json.trainingCompletedItemIds ?? [],
         dietCompletedItemIds: json.dietCompletedItemIds ?? [],
         extraTrainingEntries: json.extraTrainingEntries ?? [],
@@ -64,5 +65,13 @@ export async function getDailyStatusController(req: Request, res: Response): Pro
     res.status(StatusCodes.OK).json({
         status: 'success',
         data: { tracking: serializeTracking(tracking) },
+    });
+}
+
+export async function getLast30DaysWaterIntakeController(req: Request, res: Response): Promise<void> {
+    const data = await TrackingService.getLast30DaysWaterIntake(req.user!);
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { waterIntake: data },
     });
 }

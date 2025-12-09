@@ -95,9 +95,10 @@ export class SubscriptionService {
         }
 
         const isActive = computeIsActive(subscription);
-        const profileUpdateRequired = subscription.nextProfileUpdateDue
-            ? subscription.nextProfileUpdateDue.getTime() <= Date.now()
-            : false;
+        const profileUpdateRequired = !subscription.lastProfileUpdateAt || 
+            (subscription.nextProfileUpdateDue 
+            ? subscription.nextProfileUpdateDue.getTime() <= Date.now() 
+            : false);
 
         return {
             isSubscribed: isActive,

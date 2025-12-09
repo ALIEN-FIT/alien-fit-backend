@@ -12,6 +12,11 @@ export interface ExtraFoodEntry {
     calories?: number;
 }
 
+export interface WaterIntakeRecord {
+    intakeMl: number;
+    time: string;
+}
+
 export class DailyTrackingEntity extends Model {
     declare id: string;
     declare userId: string;
@@ -19,6 +24,7 @@ export class DailyTrackingEntity extends Model {
     declare trainingDone: boolean;
     declare dietDone: boolean;
     declare waterIntakeMl: number;
+    declare waterIntakeRecords: WaterIntakeRecord[];
     declare trainingCompletedItemIds: string[];
     declare dietCompletedItemIds: string[];
     declare extraTrainingEntries: ExtraTrainingEntry[];
@@ -54,6 +60,12 @@ DailyTrackingEntity.init(
         waterIntakeMl: {
             type: DataTypes.INTEGER,
             defaultValue: 0,
+            allowNull: false,
+        },
+        waterIntakeRecords: {
+            type: DataTypes.JSONB,
+            defaultValue: [],
+            allowNull: false,
         },
         trainingCompletedItemIds: {
             type: DataTypes.JSONB,
