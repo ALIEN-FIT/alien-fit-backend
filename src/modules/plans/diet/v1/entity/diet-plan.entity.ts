@@ -148,8 +148,8 @@ DietMealItemEntity.init(
     }
 );
 
-DietPlanEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user' });
-UserEntity.hasOne(DietPlanEntity, { foreignKey: 'userId', as: 'dietPlan' });
+DietPlanEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
+UserEntity.hasOne(DietPlanEntity, { foreignKey: 'userId', as: 'dietPlan', onDelete: 'CASCADE', hooks: true });
 
 DietPlanEntity.hasMany(DietPlanDayEntity, { foreignKey: 'planId', as: 'days', onDelete: 'CASCADE', hooks: true });
 DietPlanDayEntity.belongsTo(DietPlanEntity, { foreignKey: 'planId', as: 'plan' });

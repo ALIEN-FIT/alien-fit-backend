@@ -13,7 +13,7 @@ export function errorMiddleware(err: Error | HttpResponseError, req: Request, re
         });
     }
 
-    errorLogger.error(err.stack || err.message);
+    errorLogger.error(err.stack + " || " + err.message + " || " + err.name + "||" +  (req.user ? ` || User ID: ${req.user.id}` : ' ||  Unauthenticated') + ` || ${req.method} ${req.originalUrl}` ) ;
 
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
         message: req.__('internal_server_error'),

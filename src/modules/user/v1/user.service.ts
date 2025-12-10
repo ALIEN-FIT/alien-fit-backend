@@ -2,7 +2,7 @@ import { HttpResponseError } from '../../../utils/appError.js';
 import { StatusCodes } from 'http-status-codes';
 import { UserEntity } from './entity/user.entity.js';
 import { isStrongPassword } from '../../../utils/password.utils.js';
-import { Op } from 'sequelize';
+import { ForeignKeyConstraintError, Op } from 'sequelize';
 import { MediaEntity } from '../../media/v1/model/media.model.js';
 
 
@@ -79,8 +79,18 @@ export class UserService {
         if (!user) {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'User not found');
         }
-        await user.destroy();
-        return user;
+        try {
+            await user.destroy();
+            return user;
+        } catch (error) {
+            if (error instanceof ForeignKeyConstraintError) {
+                throw new HttpResponseError(
+                    StatusCodes.CONFLICT,
+                    'Cannot delete user because related records exist (plans, requests, sessions, or profiles). Remove dependencies first.'
+                );
+            }
+            throw error;
+        }
     }
 
     static async getUsersByFilter(

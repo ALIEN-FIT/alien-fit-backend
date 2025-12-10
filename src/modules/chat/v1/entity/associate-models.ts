@@ -4,14 +4,14 @@ import { MessageEntity } from './message.entity.js';
 import { MediaEntity } from '../../../media/v1/model/media.model.js';
 import { MessageMediaEntity } from './message-media.entity.js';
 
-UserEntity.hasOne(ChatEntity, { foreignKey: 'userId', as: 'chat' });
-ChatEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user' });
+UserEntity.hasOne(ChatEntity, { foreignKey: 'userId', as: 'chat', onDelete: 'CASCADE', hooks: true });
+ChatEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
 
 ChatEntity.hasMany(MessageEntity, { foreignKey: 'chatId', as: 'messages' });
 MessageEntity.belongsTo(ChatEntity, { foreignKey: 'chatId', as: 'chat' });
 
-MessageEntity.belongsTo(UserEntity, { foreignKey: 'senderId', as: 'sender' });
-UserEntity.hasMany(MessageEntity, { foreignKey: 'senderId', as: 'sentMessages' });
+MessageEntity.belongsTo(UserEntity, { foreignKey: 'senderId', as: 'sender', onDelete: 'CASCADE' });
+UserEntity.hasMany(MessageEntity, { foreignKey: 'senderId', as: 'sentMessages', onDelete: 'CASCADE', hooks: true });
 
 MessageEntity.belongsToMany(MediaEntity, {
     through: MessageMediaEntity,

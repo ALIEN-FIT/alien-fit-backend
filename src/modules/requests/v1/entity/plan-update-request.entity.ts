@@ -70,5 +70,5 @@ PlanUpdateRequestEntity.init(
     }
 );
 
-PlanUpdateRequestEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user' });
-UserEntity.hasMany(PlanUpdateRequestEntity, { foreignKey: 'userId', as: 'planUpdateRequests' });
+PlanUpdateRequestEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
+UserEntity.hasMany(PlanUpdateRequestEntity, { foreignKey: 'userId', as: 'planUpdateRequests', onDelete: 'CASCADE', hooks: true });

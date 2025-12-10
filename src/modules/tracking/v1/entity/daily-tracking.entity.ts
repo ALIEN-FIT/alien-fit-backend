@@ -98,5 +98,5 @@ DailyTrackingEntity.init(
     }
 );
 
-DailyTrackingEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user' });
-UserEntity.hasMany(DailyTrackingEntity, { foreignKey: 'userId', as: 'dailyTracking' });
+DailyTrackingEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
+UserEntity.hasMany(DailyTrackingEntity, { foreignKey: 'userId', as: 'dailyTracking', onDelete: 'CASCADE', hooks: true });

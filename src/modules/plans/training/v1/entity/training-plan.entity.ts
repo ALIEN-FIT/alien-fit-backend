@@ -179,8 +179,8 @@ TrainingPlanItemEntity.init(
     }
 );
 
-TrainingPlanEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user' });
-UserEntity.hasOne(TrainingPlanEntity, { foreignKey: 'userId', as: 'trainingPlan' });
+TrainingPlanEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
+UserEntity.hasOne(TrainingPlanEntity, { foreignKey: 'userId', as: 'trainingPlan', onDelete: 'CASCADE', hooks: true });
 
 TrainingPlanEntity.hasMany(TrainingPlanDayEntity, { foreignKey: 'planId', as: 'days', onDelete: 'CASCADE', hooks: true });
 TrainingPlanDayEntity.belongsTo(TrainingPlanEntity, { foreignKey: 'planId', as: 'plan' });

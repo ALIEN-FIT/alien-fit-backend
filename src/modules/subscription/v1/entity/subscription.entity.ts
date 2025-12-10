@@ -70,5 +70,5 @@ SubscriptionEntity.init(
     }
 );
 
-UserEntity.hasOne(SubscriptionEntity, { foreignKey: 'userId', as: 'subscription' });
-SubscriptionEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user' });
+UserEntity.hasOne(SubscriptionEntity, { foreignKey: 'userId', as: 'subscription', onDelete: 'CASCADE', hooks: true });
+SubscriptionEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });

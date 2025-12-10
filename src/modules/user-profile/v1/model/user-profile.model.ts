@@ -81,8 +81,8 @@ UserProfileEntity.init(
 );
 
 // Relations
-UserEntity.hasOne(UserProfileEntity, { foreignKey: 'userId', as: 'profile' });
-UserProfileEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user' });
+UserEntity.hasOne(UserProfileEntity, { foreignKey: 'userId', as: 'profile', onDelete: 'CASCADE', hooks: true });
+UserProfileEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
 
 // Media relation for inbody image
 UserProfileEntity.belongsTo(MediaEntity, { foreignKey: 'inbodyImageId', as: 'inbodyImage' });
