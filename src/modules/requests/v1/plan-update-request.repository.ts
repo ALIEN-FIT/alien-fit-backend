@@ -1,3 +1,4 @@
+import { UserEntity } from '../../user/v1/entity/user.entity.js';
 import { PlanUpdateRequestEntity } from './entity/plan-update-request.entity.js';
 
 export class PlanUpdateRequestRepository {
@@ -18,6 +19,7 @@ export class PlanUpdateRequestRepository {
         const where = status ? { status } : {};
         return PlanUpdateRequestEntity.findAndCountAll({
             where,
+            include: [{ model: UserEntity, as: 'user' }],
             order: [['createdAt', 'DESC']],
             limit,
             offset,
