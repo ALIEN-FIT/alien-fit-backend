@@ -14,14 +14,14 @@ const tagIdsField = Joi.alternatives().try(
 export const createTrainingVideoSchema = Joi.object({
     title: Joi.string().trim().min(3).max(200).required(),
     description: Joi.string().allow('', null).optional(),
-    videoUrl: Joi.string().uri().required(),
+    videoUrl: Joi.string().required(),
     tagIds: tagIdsField.optional(),
 }).unknown(false);
 
 export const updateTrainingVideoSchema = Joi.object({
     title: Joi.string().trim().min(3).max(200).optional(),
     description: Joi.string().allow('', null).optional(),
-    videoUrl: Joi.string().uri().optional(),
+    videoUrl: Joi.string().optional(),
     tagIds: tagIdsField.optional(),
 })
     .min(1)
@@ -43,13 +43,13 @@ export const listTrainingVideoQuerySchema = Joi.object({
 export const createTrainingTagSchema = Joi.object({
     title: Joi.string().trim().min(2).max(100).required(),
     description: Joi.string().allow('', null).optional(),
-    imageId: Joi.string().uuid().required(),
+    imageId: Joi.string().required(),
 }).unknown(false);
 
 export const updateTrainingTagSchema = Joi.object({
     title: Joi.string().trim().min(2).max(100).optional(),
     description: Joi.string().allow('', null).optional(),
-    imageId: Joi.string().uri().optional(),
+    imageId: Joi.string().optional(),
 })
     .min(1)
     .messages({ 'object.min': 'At least one field must be provided' });
