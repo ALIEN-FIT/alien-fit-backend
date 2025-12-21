@@ -5,7 +5,7 @@ import { TrainingPlanRepository } from './training-plan.repository.js';
 import { TrainingPlanEntity } from './entity/training-plan.entity.js';
 import { Roles } from '../../../../constants/roles.js';
 import { UserEntity } from '../../../user/v1/entity/user.entity.js';
-import { addWeeks, startOfDayUTC } from '../../../../utils/date.utils.js';
+import { addDays, addWeeks, startOfDayUTC } from '../../../../utils/date.utils.js';
 import { TrainingVideoService } from '../../../training-video/v1/training-video.service.js';
 import { TrainingVideoEntity } from '../../../training-video/v1/entity/training-video.entity.js';
 
@@ -19,8 +19,12 @@ interface TrainingPlanItemInput {
     trainingVideoId: string;
     sets: number;
     repeats: number;
-    isSuperset?: boolean;
+    itemType?: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
+    isSuperset?: boolean; // legacy
     supersetItems?: SupersetItemInput[];
+    extraVideos?: Array<{ trainingVideoId: string }>;
+    dropsetConfig?: { dropPercents: number[]; restSeconds?: number };
+    circuitGroup?: string;
 }
 
 interface TrainingPlanDayInput {
@@ -84,9 +88,12 @@ export class TrainingPlanService {
         for (const day of days) {
             for (const item of day.items ?? []) {
                 ids.add(item.trainingVideoId);
-                if (item.isSuperset) {
+                if (item.isSuperset || item.itemType === 'SUPERSET') {
                     for (const superset of item.supersetItems ?? []) {
                         ids.add(superset.trainingVideoId);
+                    }
+                    for (const extra of item.extraVideos ?? []) {
+                        ids.add(extra.trainingVideoId);
                     }
                 }
             }
@@ -120,8 +127,14 @@ export class TrainingPlanService {
             throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${item.trainingVideoId}`);
         }
 
+        const itemType = item.itemType ?? (item.isSuperset ? 'SUPERSET' : 'REGULAR');
+
         let supersetItems: SupersetItemInput[] | null = null;
-        if (item.isSuperset) {
+        let extraVideos: Array<{ trainingVideoId: string }> | null = null;
+        let dropsetConfig: { dropPercents: number[]; restSeconds?: number } | null = null;
+        let circuitGroup: string | null = null;
+
+        if (itemType === 'SUPERSET') {
             supersetItems = (item.supersetItems ?? []).map((superset) => {
                 const supersetVideo = videoMap.get(superset.trainingVideoId);
                 if (!supersetVideo) {
@@ -133,15 +146,30 @@ export class TrainingPlanService {
                     repeats: superset.repeats,
                 };
             });
+            extraVideos = (item.extraVideos ?? []).map((ev) => {
+                const evVideo = videoMap.get(ev.trainingVideoId);
+                if (!evVideo) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${ev.trainingVideoId}`);
+                }
+                return { trainingVideoId: ev.trainingVideoId };
+            });
+        } else if (itemType === 'DROPSET') {
+            dropsetConfig = item.dropsetConfig ?? null;
+        } else if (itemType === 'CIRCUIT') {
+            circuitGroup = item.circuitGroup ?? null;
         }
 
         return {
             trainingVideoId: item.trainingVideoId,
             sets: item.sets,
             repeats: item.repeats,
-            isSuperset: Boolean(item.isSuperset),
+            isSuperset: itemType === 'SUPERSET',
             supersetItems,
             trainingVideo: video,
+            itemType,
+            extraVideos,
+            dropsetConfig,
+            circuitGroup,
         };
     }
 
@@ -164,7 +192,11 @@ export class TrainingPlanService {
                 sets: item.sets,
                 trainingVideoId: item.trainingVideoId,
                 isSuperset: Boolean(item.isSuperset),
+                itemType: item.itemType,
                 supersetItems: item.isSuperset ? item.supersetItems ?? [] : null,
+                extraVideos: item.itemType === 'SUPERSET' ? item.extraVideos ?? [] : null,
+                dropsetConfig: item.itemType === 'DROPSET' ? item.dropsetConfig ?? null : null,
+                circuitGroup: item.itemType === 'CIRCUIT' ? item.circuitGroup ?? null : null,
             }));
 
             return {
@@ -184,4 +216,8 @@ interface NormalizedTrainingPlanItem {
     isSuperset: boolean;
     supersetItems: SupersetItemInput[] | null;
     trainingVideo: TrainingVideoEntity;
+    itemType: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
+    extraVideos: Array<{ trainingVideoId: string }> | null;
+    dropsetConfig: { dropPercents: number[]; restSeconds?: number } | null;
+    circuitGroup: string | null;
 }

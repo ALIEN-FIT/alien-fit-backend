@@ -3,7 +3,7 @@ import { HttpResponseError } from '../../../utils/appError.js';
 import { UserService } from '../../user/v1/user.service.js';
 import { SubscriptionRepository } from './subscription.repository.js';
 import { SubscriptionEntity } from './entity/subscription.entity.js';
-import { addWeeks } from '../../../utils/date.utils.js';
+import { addDays } from '../../../utils/date.utils.js';
 
 interface SubscriptionStatus {
     isSubscribed: boolean;
@@ -15,7 +15,7 @@ function calculateNextProfileDue(lastUpdate: Date | null): Date | null {
     if (!lastUpdate) {
         return null;
     }
-    return addWeeks(lastUpdate, 4);
+    return addDays(lastUpdate, 30);
 }
 
 function computeIsActive(subscription: SubscriptionEntity | null, referenceDate = new Date()): boolean {
@@ -43,7 +43,7 @@ export class SubscriptionService {
     static async activateSubscription(userId: string): Promise<SubscriptionEntity> {
         await UserService.getUserById(userId);
         const startDate = new Date();
-        const endDate = addWeeks(startDate, 4);
+        const endDate = addDays(startDate, 30);
 
         const existing = await SubscriptionRepository.findByUserId(userId);
         const nextProfileUpdateDue = existing?.lastProfileUpdateAt
@@ -66,7 +66,7 @@ export class SubscriptionService {
         const now = new Date();
         const existing = await SubscriptionRepository.findByUserId(userId);
         const baseDate = existing?.endDate && existing.endDate > now ? existing.endDate : now;
-        const endDate = addWeeks(baseDate, 4);
+        const endDate = addDays(baseDate, 30);
 
         const subscription = await SubscriptionRepository.upsert(userId, {
             isSubscribed: true,
@@ -95,10 +95,10 @@ export class SubscriptionService {
         }
 
         const isActive = computeIsActive(subscription);
-        const profileUpdateRequired = !subscription.lastProfileUpdateAt || 
-            (subscription.nextProfileUpdateDue 
-            ? subscription.nextProfileUpdateDue.getTime() <= Date.now() 
-            : false);
+        const profileUpdateRequired = !subscription.lastProfileUpdateAt ||
+            (subscription.nextProfileUpdateDue
+                ? subscription.nextProfileUpdateDue.getTime() <= Date.now()
+                : false);
 
         return {
             isSubscribed: isActive,

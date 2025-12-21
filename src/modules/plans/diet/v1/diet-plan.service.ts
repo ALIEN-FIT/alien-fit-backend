@@ -7,22 +7,28 @@ import { DietPlanEntity } from './entity/diet-plan.entity.js';
 import { UserEntity } from '../../../user/v1/entity/user.entity.js';
 import { addWeeks, startOfDayUTC } from '../../../../utils/date.utils.js';
 
-const MEAL_TYPES = ['breakfast', 'lunch', 'snacks', 'dinner'] as const;
-
-type MealType = typeof MEAL_TYPES[number];
+interface FoodInput {
+    name: string;
+    grams: number;
+    calories: number;
+    fats: number;
+    carbs: number;
+}
 
 interface DietMealInput {
-    foodName: string;
-    amount: string;
+    mealName: string;
+    order: number;
+    foods: FoodInput[];
 }
 
 interface DietPlanDayInput {
     dayNumber?: number;
-    meals: Partial<Record<MealType, DietMealInput[]>>;
+    meals: DietMealInput[];
 }
 
 interface CreateDietPlanPayload {
     startDate?: string;
+    recommendedWaterIntakeMl?: number;
     days: DietPlanDayInput[];
 }
 
@@ -52,7 +58,13 @@ export class DietPlanService {
         const template = this.normalizeTemplate(payload.days);
         const daysPayload = this.buildDaysPayload(normalizedStart, template);
 
-        await DietPlanRepository.createPlan(userId, normalizedStart, endDate, daysPayload);
+        await DietPlanRepository.createPlan(
+            userId,
+            normalizedStart,
+            endDate,
+            daysPayload,
+            payload.recommendedWaterIntakeMl ?? null,
+        );
 
         return this.getDietPlan(actor, userId);
     }
@@ -69,58 +81,44 @@ export class DietPlanService {
         return plan;
     }
 
-    private static normalizeTemplate(days: DietPlanDayInput[]): Array<Record<MealType, DietMealInput[]>> {
-        const template = Array.from({ length: 7 }, () => {
-            const mealsRecord: Record<MealType, DietMealInput[]> = {
-                breakfast: [],
-                lunch: [],
-                snacks: [],
-                dinner: [],
-            };
-            return mealsRecord;
-        });
+    private static normalizeTemplate(days: DietPlanDayInput[]): Array<DietMealInput[]> {
+        const template: Array<DietMealInput[]> = Array.from({ length: 7 }, () => []);
 
         days.forEach((day, index) => {
             const position = day.dayNumber ? day.dayNumber - 1 : index;
             if (position < 0 || position > 6) {
                 throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'dayNumber must be between 1 and 7');
             }
-            const meals = day.meals ?? {};
-            for (const mealType of MEAL_TYPES) {
-                template[position][mealType] = (meals[mealType] ?? []).map((meal) => ({
-                    foodName: meal.foodName,
-                    amount: meal.amount,
-                }));
-            }
+            const meals = day.meals ?? [];
+            template[position] = meals.map((m) => ({
+                mealName: m.mealName,
+                order: m.order,
+                foods: m.foods.map((f) => ({
+                    name: f.name,
+                    grams: f.grams,
+                    calories: f.calories,
+                    fats: f.fats,
+                    carbs: f.carbs,
+                })),
+            }));
         });
 
         return template;
     }
 
-    private static buildDaysPayload(startDate: Date, template: Array<Record<MealType, DietMealInput[]>>) {
+    private static buildDaysPayload(startDate: Date, template: Array<DietMealInput[]>) {
         return Array.from({ length: 28 }, (_, index) => {
             const date = new Date(startDate);
             date.setDate(startDate.getDate() + index);
-            const templateDay = template[index % 7];
+            const templateMeals = template[index % 7];
 
-            const meals: Array<{
-                mealType: MealType;
-                order: number;
-                foodName: string;
-                amount: string;
-            }> = [];
-
-            for (const mealType of MEAL_TYPES) {
-                const items = templateDay[mealType];
-                items.forEach((item, orderIndex) => {
-                    meals.push({
-                        mealType,
-                        order: orderIndex + 1,
-                        foodName: item.foodName,
-                        amount: item.amount,
-                    });
-                });
-            }
+            const meals = templateMeals
+                .sort((a, b) => a.order - b.order)
+                .map((m) => ({
+                    mealName: m.mealName,
+                    order: m.order,
+                    foods: m.foods,
+                }));
 
             return {
                 dayIndex: index + 1,

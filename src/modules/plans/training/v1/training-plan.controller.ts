@@ -30,9 +30,13 @@ interface SerializedTrainingPlanItem {
     sets: number | null;
     repeats: number | null;
     isSuperset: boolean;
+    itemType: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
     isDone: boolean;
     trainingVideo: SerializedTrainingVideo | null;
     supersetItems: Array<SerializedSupersetItem>;
+    extraVideos: Array<{ trainingVideo: SerializedTrainingVideo | null }>;
+    dropsetConfig: { dropPercents: number[]; restSeconds?: number } | null;
+    circuitGroup: string | null;
 }
 
 interface SerializedSupersetItem {
@@ -75,6 +79,11 @@ async function serializeTrainingPlan(plan: TrainingPlanEntity): Promise<Serializ
             for (const superset of item.supersetItems ?? []) {
                 if (superset.trainingVideoId) {
                     supersetVideoIds.add(superset.trainingVideoId);
+                }
+            }
+            for (const ev of (item as any).extraVideos ?? []) {
+                if (ev.trainingVideoId) {
+                    supersetVideoIds.add(ev.trainingVideoId);
                 }
             }
 
@@ -124,6 +133,7 @@ async function serializeTrainingPlan(plan: TrainingPlanEntity): Promise<Serializ
                     sets: item.sets,
                     repeats: item.repeats,
                     isSuperset: item.isSuperset,
+                    itemType: (item as any).itemType ?? (item.isSuperset ? 'SUPERSET' : 'REGULAR'),
                     isDone: item.isDone,
                     trainingVideo: serializeVideo(item.trainingVideo),
                     supersetItems: item.supersetItems.map((superset) => ({
@@ -132,6 +142,11 @@ async function serializeTrainingPlan(plan: TrainingPlanEntity): Promise<Serializ
                         repeats: superset.repeats,
                         trainingVideo: serializeVideo(supersetVideosMap.get(superset.trainingVideoId)),
                     })),
+                    extraVideos: ((item as any).extraVideos ?? []).map((ev: any) => ({
+                        trainingVideo: serializeVideo(supersetVideosMap.get(ev.trainingVideoId)),
+                    })),
+                    dropsetConfig: (item as any).dropsetConfig ?? null,
+                    circuitGroup: (item as any).circuitGroup ?? null,
                 })),
             })),
         })),

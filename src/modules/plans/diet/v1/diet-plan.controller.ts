@@ -6,39 +6,27 @@ import { UserEntity } from '../../../user/v1/entity/user.entity.js';
 import { TrackingRepository } from '../../../tracking/v1/tracking.repository.js';
 import { DailyTrackingEntity } from '../../../tracking/v1/entity/daily-tracking.entity.js';
 
-const MEAL_TYPES = ['breakfast', 'lunch', 'snacks', 'dinner'] as const;
-
-type MealType = typeof MEAL_TYPES[number];
-
 interface SerializedDietPlan {
     id: string;
     userId: string;
     startDate: Date;
     endDate: Date;
+    recommendedWaterIntakeMl: number | null;
     weeks: Array<{
         weekNumber: number;
         days: Array<{
             dayIndex: number;
             date: Date;
             isDone: boolean;
-            meals: Record<MealType, Array<{
+            meals: Array<{
                 id: string;
+                mealName: string;
                 order: number;
-                foodName: string;
-                amount: string;
+                foods: Array<{ name: string; grams: number; calories: number; fats: number; carbs: number }>;
                 isDone: boolean;
-            }>>;
+            }>;
         }>;
     }>;
-}
-
-function emptyMealsRecord(): Record<MealType, Array<{ id: string; order: number; foodName: string; amount: string; isDone: boolean }>> {
-    return {
-        breakfast: [],
-        lunch: [],
-        snacks: [],
-        dinner: [],
-    };
 }
 
 async function serializeDietPlan(plan: DietPlanEntity): Promise<SerializedDietPlan> {
@@ -50,22 +38,18 @@ async function serializeDietPlan(plan: DietPlanEntity): Promise<SerializedDietPl
         if (!weeksMap.has(day.weekNumber)) {
             weeksMap.set(day.weekNumber, { weekNumber: day.weekNumber, days: [] });
         }
-        const meals = emptyMealsRecord();
         const dayDateKey = toDateOnlyString(day.date);
         const isDone = trackingMap.get(dayDateKey)?.dietDone ?? false;
         const completedIds = new Set<string>(trackingMap.get(dayDateKey)?.dietCompletedItemIds ?? []);
-        for (const meal of day.meals ?? []) {
-            meals[meal.mealType as MealType].push({
+        const meals = (day.meals ?? [])
+            .map((meal: any) => ({
                 id: meal.id,
+                mealName: meal.mealName,
                 order: meal.order,
-                foodName: meal.foodName,
-                amount: meal.amount,
+                foods: meal.foods ?? [],
                 isDone: completedIds.has(meal.id),
-            });
-        }
-        for (const mealType of MEAL_TYPES) {
-            meals[mealType].sort((a, b) => a.order - b.order);
-        }
+            }))
+            .sort((a: any, b: any) => a.order - b.order);
         weeksMap.get(day.weekNumber)!.days.push({
             dayIndex: day.dayIndex,
             date: day.date,
@@ -86,6 +70,7 @@ async function serializeDietPlan(plan: DietPlanEntity): Promise<SerializedDietPl
         userId: json.userId,
         startDate: json.startDate,
         endDate: json.endDate,
+        recommendedWaterIntakeMl: json.recommendedWaterIntakeMl ?? null,
         weeks,
     };
 }

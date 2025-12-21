@@ -67,6 +67,10 @@ export class TrainingPlanRepository {
                 trainingVideoId: string;
                 isSuperset: boolean;
                 supersetItems: Array<Record<string, unknown>> | null;
+                itemType: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
+                extraVideos: Array<Record<string, unknown>> | null;
+                dropsetConfig: Record<string, unknown> | null;
+                circuitGroup: string | null;
             }>;
         }>,
     ) {
@@ -88,7 +92,20 @@ export class TrainingPlanRepository {
                 }
 
                 const itemsPayload = day.items.map((item) => ({
-                    ...item,
+                    order: item.order,
+                    title: item.title,
+                    videoLink: item.videoLink,
+                    description: item.description,
+                    duration: item.duration,
+                    repeats: item.repeats,
+                    sets: item.sets,
+                    trainingVideoId: item.trainingVideoId,
+                    isSuperset: item.isSuperset,
+                    supersetItems: item.supersetItems,
+                    itemType: item.itemType,
+                    extraVideos: item.extraVideos,
+                    dropsetConfig: item.dropsetConfig,
+                    circuitGroup: item.circuitGroup,
                     dayId: planDay.id,
                 }));
                 await TrainingPlanItemEntity.bulkCreate(itemsPayload, { transaction });

@@ -37,6 +37,10 @@ export class TrainingPlanItemEntity extends Model {
     declare trainingVideoId: string;
     declare isSuperset: boolean;
     declare supersetItems: Array<Record<string, unknown>> | null;
+    declare itemType: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
+    declare extraVideos: Array<Record<string, unknown>> | null;
+    declare dropsetConfig: Record<string, unknown> | null;
+    declare circuitGroup: string | null;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -162,6 +166,23 @@ TrainingPlanItemEntity.init(
         },
         supersetItems: {
             type: DataTypes.JSONB,
+            allowNull: true,
+        },
+        itemType: {
+            type: DataTypes.ENUM('REGULAR', 'SUPERSET', 'DROPSET', 'CIRCUIT'),
+            allowNull: false,
+            defaultValue: 'REGULAR',
+        },
+        extraVideos: {
+            type: DataTypes.JSONB,
+            allowNull: true,
+        },
+        dropsetConfig: {
+            type: DataTypes.JSONB,
+            allowNull: true,
+        },
+        circuitGroup: {
+            type: DataTypes.STRING,
             allowNull: true,
         },
     },

@@ -11,11 +11,30 @@ const trainingPlanItemSchema = Joi.object({
     trainingVideoId: JoiCustomValidateObjectId('Training video ID'),
     sets: Joi.number().integer().positive().required(),
     repeats: Joi.number().integer().positive().required(),
+    itemType: Joi.string().valid('REGULAR', 'SUPERSET', 'DROPSET', 'CIRCUIT').default('REGULAR'),
     isSuperset: Joi.boolean().optional(),
-    supersetItems: Joi.alternatives().conditional('isSuperset', {
-        is: true,
-        then: Joi.array().items(supersetExerciseSchema).length(2).required(),
-        otherwise: Joi.forbidden().messages({ 'any.unknown': 'supersetItems is allowed only when isSuperset is true' }),
+    supersetItems: Joi.alternatives().conditional('itemType', {
+        is: Joi.valid('SUPERSET'),
+        then: Joi.array().items(supersetExerciseSchema).min(1).required(),
+        otherwise: Joi.forbidden().messages({ 'any.unknown': 'supersetItems is allowed only when itemType is SUPERSET' }),
+    }),
+    extraVideos: Joi.alternatives().conditional('itemType', {
+        is: Joi.valid('SUPERSET'),
+        then: Joi.array().items(Joi.object({ trainingVideoId: JoiCustomValidateObjectId('Extra video ID') })).min(1).optional(),
+        otherwise: Joi.forbidden(),
+    }),
+    dropsetConfig: Joi.alternatives().conditional('itemType', {
+        is: Joi.valid('DROPSET'),
+        then: Joi.object({
+            dropPercents: Joi.array().items(Joi.number().min(0).max(100)).min(1).required(),
+            restSeconds: Joi.number().integer().min(0).default(0),
+        }).required(),
+        otherwise: Joi.forbidden(),
+    }),
+    circuitGroup: Joi.alternatives().conditional('itemType', {
+        is: Joi.valid('CIRCUIT'),
+        then: Joi.string().min(1).required(),
+        otherwise: Joi.forbidden(),
     }),
 }).unknown(false);
 

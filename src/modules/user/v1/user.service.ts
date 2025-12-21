@@ -4,6 +4,8 @@ import { UserEntity } from './entity/user.entity.js';
 import { isStrongPassword } from '../../../utils/password.utils.js';
 import { ForeignKeyConstraintError, Op } from 'sequelize';
 import { MediaEntity } from '../../media/v1/model/media.model.js';
+import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
+import { SubscriptionEntity } from '../../subscription/v1/entity/subscription.entity.js';
 
 
 interface PaginateOptions {
@@ -11,8 +13,15 @@ interface PaginateOptions {
     limit?: number;
 }
 
+interface UserWithSubscription {
+    user: UserEntity;
+    subscription: SubscriptionEntity | null;
+    isSubscribed: boolean;
+    profileUpdateRequired: boolean;
+}
+
 interface PaginationResult {
-    users: UserEntity[];
+    users: UserWithSubscription[];
     page: number;
     limit: number;
     total: number;
@@ -126,8 +135,19 @@ export class UserService {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'No users found with the given filter');
         }
 
+        const usersWithSubs: UserWithSubscription[] = [];
+        for (const user of users) {
+            const status = await SubscriptionService.getStatus(user.id.toString());
+            usersWithSubs.push({
+                user,
+                subscription: status.subscription,
+                isSubscribed: status.isSubscribed,
+                profileUpdateRequired: status.profileUpdateRequired,
+            });
+        }
+
         return {
-            users,
+            users: usersWithSubs,
             page: Number(page),
             limit: Number(limit),
             total,

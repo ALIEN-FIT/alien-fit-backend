@@ -4,6 +4,12 @@ export function addWeeks(date: Date, weeks: number): Date {
     return result;
 }
 
+export function addDays(date: Date, days: number): Date {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
+}
+
 export function startOfDayUTC(date: Date): Date {
     const result = new Date(date);
     result.setUTCHours(0, 0, 0, 0);

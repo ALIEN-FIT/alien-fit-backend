@@ -7,6 +7,7 @@ export class DietPlanEntity extends Model {
     declare userId: string;
     declare startDate: Date;
     declare endDate: Date;
+    declare recommendedWaterIntakeMl: number | null;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -26,10 +27,15 @@ export class DietPlanDayEntity extends Model {
 export class DietMealItemEntity extends Model {
     declare id: string;
     declare dayId: string;
-    declare mealType: 'breakfast' | 'lunch' | 'snacks' | 'dinner';
+    declare mealName: string;
     declare order: number;
-    declare foodName: string;
-    declare amount: string;
+    declare foods: Array<{
+        name: string;
+        grams: number;
+        calories: number;
+        fats: number;
+        carbs: number;
+    }>;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -54,6 +60,10 @@ DietPlanEntity.init(
         endDate: {
             type: DataTypes.DATE,
             allowNull: false,
+        },
+        recommendedWaterIntakeMl: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
         },
     },
     {
@@ -117,21 +127,18 @@ DietMealItemEntity.init(
             type: DataTypes.UUID,
             allowNull: false,
         },
-        mealType: {
-            type: DataTypes.ENUM('breakfast', 'lunch', 'snacks', 'dinner'),
+        mealName: {
+            type: DataTypes.STRING,
             allowNull: false,
         },
         order: {
             type: DataTypes.INTEGER,
             allowNull: false,
         },
-        foodName: {
-            type: DataTypes.STRING,
+        foods: {
+            type: DataTypes.JSONB,
             allowNull: false,
-        },
-        amount: {
-            type: DataTypes.STRING,
-            allowNull: false,
+            defaultValue: [],
         },
     },
     {
@@ -141,7 +148,7 @@ DietMealItemEntity.init(
         timestamps: true,
         indexes: [
             {
-                fields: ['dayId', 'mealType', 'order'],
+                fields: ['dayId', 'mealName', 'order'],
                 unique: true,
             },
         ],

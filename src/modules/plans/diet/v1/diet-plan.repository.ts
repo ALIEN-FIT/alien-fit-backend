@@ -23,7 +23,7 @@ export class DietPlanRepository {
                 [
                     { model: DietPlanDayEntity, as: 'days' },
                     { model: DietMealItemEntity, as: 'meals' },
-                    'mealType',
+                    'mealName',
                     'ASC',
                 ],
                 [
@@ -49,17 +49,17 @@ export class DietPlanRepository {
             date: Date;
             weekNumber: number;
             meals: Array<{
-                mealType: 'breakfast' | 'lunch' | 'snacks' | 'dinner';
+                mealName: string;
                 order: number;
-                foodName: string;
-                amount: string;
+                foods: Array<{ name: string; grams: number; calories: number; fats: number; carbs: number }>;
             }>;
         }>,
+        recommendedWaterIntakeMl: number | null,
     ) {
         return sequelize.transaction(async (transaction) => {
             await this.deleteExistingPlan(userId, transaction);
 
-            const plan = await DietPlanEntity.create({ userId, startDate, endDate }, { transaction });
+            const plan = await DietPlanEntity.create({ userId, startDate, endDate, recommendedWaterIntakeMl }, { transaction });
 
             for (const day of days) {
                 const planDay = await DietPlanDayEntity.create({
@@ -74,7 +74,9 @@ export class DietPlanRepository {
                 }
 
                 const mealsPayload = day.meals.map((meal) => ({
-                    ...meal,
+                    mealName: meal.mealName,
+                    order: meal.order,
+                    foods: meal.foods,
                     dayId: planDay.id,
                 }));
 
