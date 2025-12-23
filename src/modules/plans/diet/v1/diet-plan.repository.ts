@@ -23,12 +23,6 @@ export class DietPlanRepository {
                 [
                     { model: DietPlanDayEntity, as: 'days' },
                     { model: DietMealItemEntity, as: 'meals' },
-                    'mealName',
-                    'ASC',
-                ],
-                [
-                    { model: DietPlanDayEntity, as: 'days' },
-                    { model: DietMealItemEntity, as: 'meals' },
                     'order',
                     'ASC',
                 ],
