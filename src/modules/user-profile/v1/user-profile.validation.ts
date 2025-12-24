@@ -86,8 +86,8 @@ export const userProfileSchema = Joi.object({
     }),
     preferredFood: preferredFoodSchema,
     training: trainingSchema,
-    inbodyImageId: Joi.string().allow(null).optional().messages({
-        'string.base': 'Inbody image ID must be a string',
+    bodyImages: Joi.array().items(Joi.string()).allow(null).optional().messages({
+        'array.base': 'Body images must be an array of strings',
     }),
 });
 

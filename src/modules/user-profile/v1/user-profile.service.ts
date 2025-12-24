@@ -7,6 +7,7 @@ import { MediaEntity } from '../../media/v1/model/media.model.js';
 import { Roles } from '../../../constants/roles.js';
 import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
 import { PlanUpdateRequestService } from '../../requests/v1/plan-update-request.service.js';
+import { Op } from 'sequelize';
 
 interface ProfileUpdateResult {
   profile?: UserProfileEntity;
@@ -15,13 +16,26 @@ interface ProfileUpdateResult {
   planUpdateRequestId?: string;
 }
 
-async function assertMediaExistsIfProvided(mediaId: string | null | undefined) {
-  if (mediaId === undefined || mediaId === null) {
+async function assertBodyImagesExistIfProvided(bodyImages: string[] | null | undefined) {
+  if (bodyImages === undefined || bodyImages === null) {
     return;
   }
-  const media = await MediaEntity.findByPk(mediaId);
-  if (!media) {
-    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'inbodyImageId not found');
+
+  if (bodyImages.length === 0) {
+    return;
+  }
+
+  const uniqueIds = [...new Set(bodyImages)];
+  const foundCount = await MediaEntity.count({
+    where: {
+      id: {
+        [Op.in]: uniqueIds,
+      },
+    },
+  });
+
+  if (foundCount !== uniqueIds.length) {
+    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'One or more bodyImages not found');
   }
 }
 
@@ -41,7 +55,7 @@ export class UserProfileService {
   ): Promise<ProfileUpdateResult> {
     await UserService.getUserById(userId);
 
-    await assertMediaExistsIfProvided(profileData.inbodyImageId);
+    await assertBodyImagesExistIfProvided(profileData.bodyImages);
 
     const isAdmin = actor.role === Roles.ADMIN;
     const isSelfUpdate = actor.id === userId;

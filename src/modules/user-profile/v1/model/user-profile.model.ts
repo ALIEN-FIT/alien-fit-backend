@@ -1,7 +1,6 @@
 import { DataTypes, Model } from 'sequelize';
 import { sequelize } from '../../../../database/db-config.js';
 import { UserEntity } from '../../../user/v1/entity/user.entity.js';
-import { MediaEntity } from '../../../media/v1/model/media.model.js';
 
 type PreferredFood = {
     meats: string[] | null;
@@ -45,7 +44,7 @@ export class UserProfileEntity extends Model {
     declare intolerances: string[] | null;
     declare preferredFood: PreferredFood;
     declare training: TrainingPreferences;
-    declare inbodyImageId: string | null;
+    declare bodyImages: string[] | null;
 }
 
 UserProfileEntity.init(
@@ -70,7 +69,7 @@ UserProfileEntity.init(
         intolerances: { type: DataTypes.JSONB }, // e.g. ["Gluten", "Fish", "Fruit"]
         preferredFood: { type: DataTypes.JSONB }, // e.g. { meats: ["Chicken"], carbs: ["Rice"], ... }
         training: { type: DataTypes.JSONB }, // e.g. { teamSport: ["Football"], ... }
-        inbodyImageId: { type: DataTypes.UUID, allowNull: true },
+        bodyImages: { type: DataTypes.JSONB, allowNull: true }, // e.g. ["<mediaId>", "<mediaId>"]
     },
     {
         sequelize,
@@ -83,7 +82,3 @@ UserProfileEntity.init(
 // Relations
 UserEntity.hasOne(UserProfileEntity, { foreignKey: 'userId', as: 'profile', onDelete: 'CASCADE', hooks: true });
 UserProfileEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
-
-// Media relation for inbody image
-UserProfileEntity.belongsTo(MediaEntity, { foreignKey: 'inbodyImageId', as: 'inbodyImage' });
-MediaEntity.hasMany(UserProfileEntity, { foreignKey: 'inbodyImageId', as: 'userProfiles' });
