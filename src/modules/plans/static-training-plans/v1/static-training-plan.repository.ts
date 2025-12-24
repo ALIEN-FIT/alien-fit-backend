@@ -1,29 +1,26 @@
-import { Transaction } from 'sequelize';
+import { FindAndCountOptions, Op, Transaction, WhereOptions } from 'sequelize';
 import { sequelize } from '../../../../database/db-config.js';
 import {
     StaticTrainingPlanEntity,
-    StaticTrainingPlanDayEntity,
-    StaticTrainingPlanItemEntity,
+    StaticTrainingPlanTrainingEntity,
 } from './entity/static-training-plan.entity.js';
 import { TrainingTagEntity, TrainingVideoEntity } from '../../../training-video/v1/entity/training-video.entity.js';
 
-export interface StaticTrainingPlanItemPayload {
-    order: number;
-    title: string;
-    videoLink: string | null;
-    description: string | null;
-    duration: number | null;
-    repeats: number | null;
-    sets: number;
-    trainingVideoId: string;
-    isSuperset: boolean;
-    supersetItems: Array<{ trainingVideoId: string; sets: number; repeats: number }> | null;
-}
+const SEARCH_OPERATOR = sequelize.getDialect() === 'postgres' ? Op.iLike : Op.like;
 
-export interface StaticTrainingPlanDayPayload {
-    dayIndex: number;
-    weekNumber: number;
-    items: StaticTrainingPlanItemPayload[];
+export type StaticTrainingPlanTrainingType = 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
+
+export interface StaticTrainingPlanTrainingPayload {
+    order: number;
+    type: StaticTrainingPlanTrainingType;
+    title: string | null;
+    description: string | null;
+    sets: number | null;
+    repeats: number | null;
+    duration: number | null;
+    trainingVideoId: string | null;
+    items: Array<Record<string, unknown>> | null;
+    config: Record<string, unknown> | null;
 }
 
 export class StaticTrainingPlanRepository {
@@ -31,23 +28,18 @@ export class StaticTrainingPlanRepository {
         return StaticTrainingPlanEntity.findByPk(planId, {
             include: [
                 {
-                    model: StaticTrainingPlanDayEntity,
-                    as: 'days',
+                    model: StaticTrainingPlanTrainingEntity,
+                    as: 'trainings',
                     include: [
                         {
-                            model: StaticTrainingPlanItemEntity,
-                            as: 'items',
+                            model: TrainingVideoEntity,
+                            as: 'trainingVideo',
+                            required: false,
                             include: [
                                 {
-                                    model: TrainingVideoEntity,
-                                    as: 'trainingVideo',
-                                    include: [
-                                        {
-                                            model: TrainingTagEntity,
-                                            as: 'tags',
-                                            through: { attributes: [] },
-                                        },
-                                    ],
+                                    model: TrainingTagEntity,
+                                    as: 'tags',
+                                    through: { attributes: [] },
                                 },
                             ],
                         },
@@ -55,22 +47,41 @@ export class StaticTrainingPlanRepository {
                 },
             ],
             order: [
-                [{ model: StaticTrainingPlanDayEntity, as: 'days' }, 'dayIndex', 'ASC'],
-                [
-                    { model: StaticTrainingPlanDayEntity, as: 'days' },
-                    { model: StaticTrainingPlanItemEntity, as: 'items' },
-                    'order',
-                    'ASC',
-                ],
+                [{ model: StaticTrainingPlanTrainingEntity, as: 'trainings' }, 'order', 'ASC'],
             ],
         });
     }
 
-    static listPlans() {
-        return StaticTrainingPlanEntity.findAll({
+    static async listPlans(
+        filters: { search?: string },
+        pagination: { page?: number; limit?: number },
+    ) {
+        const where: WhereOptions = {};
+        if (filters.search) {
+            (where as any).name = { [SEARCH_OPERATOR]: `%${filters.search}%` };
+        }
+
+        const limit = Number.isFinite(pagination.limit) && (pagination.limit as number) > 0 ? Number(pagination.limit) : 20;
+        const page = Number.isFinite(pagination.page) && (pagination.page as number) > 0 ? Number(pagination.page) : 1;
+        const offset = (page - 1) * limit;
+
+        const { rows, count } = await StaticTrainingPlanEntity.findAndCountAll({
+            where,
             attributes: ['id', 'name', 'subTitle', 'description', 'imageId', 'durationInMinutes', 'level', 'createdAt', 'updatedAt'],
+            limit,
+            offset,
             order: [['createdAt', 'desc']],
-        });
+        } as FindAndCountOptions);
+
+        return {
+            plans: rows,
+            pagination: {
+                page,
+                limit,
+                totalItems: count,
+                totalPages: Math.ceil(count / limit) || 1,
+            },
+        };
     }
 
     static async createPlan(
@@ -80,7 +91,7 @@ export class StaticTrainingPlanRepository {
         imageId: string,
         durationInMinutes: number | null,
         level: string | null,
-        days: StaticTrainingPlanDayPayload[],
+        trainings: StaticTrainingPlanTrainingPayload[],
     ) {
         return sequelize.transaction(async (transaction) => {
             const plan = await StaticTrainingPlanEntity.create(
@@ -88,7 +99,7 @@ export class StaticTrainingPlanRepository {
                 { transaction },
             );
 
-            await this.upsertDays(plan.id, days, transaction);
+            await this.upsertTrainings(plan.id, trainings, transaction);
             return plan;
         });
     }
@@ -96,7 +107,7 @@ export class StaticTrainingPlanRepository {
     static async updatePlan(
         planId: string,
         meta: { name?: string; subTitle?: string | null; description?: string | null; imageId?: string; durationInMinutes?: number | null; level?: string | null },
-        days?: StaticTrainingPlanDayPayload[],
+        trainings?: StaticTrainingPlanTrainingPayload[],
     ) {
         return sequelize.transaction(async (transaction) => {
             const plan = await StaticTrainingPlanEntity.findByPk(planId, { transaction });
@@ -108,9 +119,9 @@ export class StaticTrainingPlanRepository {
                 await plan.update(meta, { transaction });
             }
 
-            if (days) {
-                await StaticTrainingPlanDayEntity.destroy({ where: { planId }, transaction });
-                await this.upsertDays(planId, days, transaction);
+            if (trainings) {
+                await StaticTrainingPlanTrainingEntity.destroy({ where: { planId }, transaction });
+                await this.upsertTrainings(planId, trainings, transaction);
             }
 
             return plan;
@@ -122,31 +133,21 @@ export class StaticTrainingPlanRepository {
         return deleted > 0;
     }
 
-    private static async upsertDays(
+    private static async upsertTrainings(
         planId: string,
-        days: StaticTrainingPlanDayPayload[],
+        trainings: StaticTrainingPlanTrainingPayload[],
         transaction: Transaction,
     ) {
-        for (const day of days) {
-            const planDay = await StaticTrainingPlanDayEntity.create(
-                {
-                    planId,
-                    dayIndex: day.dayIndex,
-                    weekNumber: day.weekNumber,
-                },
-                { transaction },
-            );
-
-            if (!day.items.length) {
-                continue;
-            }
-
-            const itemsPayload = day.items.map((item) => ({
-                ...item,
-                dayId: planDay.id,
-            }));
-
-            await StaticTrainingPlanItemEntity.bulkCreate(itemsPayload, { transaction });
+        if (!trainings.length) {
+            return;
         }
+
+        await StaticTrainingPlanTrainingEntity.bulkCreate(
+            trainings.map((training) => ({
+                ...training,
+                planId,
+            })),
+            { transaction },
+        );
     }
 }

@@ -13,32 +13,31 @@ interface SerializedStaticTrainingPlan {
     imageId: string;
     durationInMinutes: number | null;
     level: string | null;
-    weeks: Array<{
-        weekNumber: number;
-        days: Array<SerializedStaticPlanDay>;
-    }>;
+    trainings: SerializedStaticTraining[];
 }
 
-interface SerializedStaticPlanDay {
-    dayIndex: number;
-    weekNumber: number;
-    items: SerializedStaticPlanItem[];
-}
+type StaticTrainingType = 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
 
-interface SerializedStaticPlanItem {
+interface SerializedStaticTraining {
     id: string;
     order: number;
+    type: StaticTrainingType;
+    title: string | null;
+    description: string | null;
     sets: number | null;
     repeats: number | null;
-    isSuperset: boolean;
+    duration: number | null;
+    config: Record<string, unknown> | null;
     trainingVideo: SerializedTrainingVideo | null;
-    supersetItems: SerializedSupersetItem[];
+    items: SerializedStaticTrainingItem[];
 }
 
-interface SerializedSupersetItem {
+interface SerializedStaticTrainingItem {
     trainingVideoId: string;
-    sets: number;
-    repeats: number;
+    title: string | null;
+    description: string | null;
+    repeats: number | null;
+    duration: number | null;
     trainingVideo: SerializedTrainingVideo | null;
 }
 
@@ -57,48 +56,17 @@ interface SerializedTrainingVideo {
 
 async function serializeStaticPlan(plan: StaticTrainingPlanEntity): Promise<SerializedStaticTrainingPlan> {
     const json = plan.toJSON() as any;
-    const weeksMap = new Map<number, { weekNumber: number; days: SerializedStaticPlanDay[] }>();
-    const supersetVideoIds = new Set<string>();
-
-    for (const day of json.days ?? []) {
-        const weekNumber = day.weekNumber ?? 1;
-        if (!weeksMap.has(weekNumber)) {
-            weeksMap.set(weekNumber, { weekNumber, days: [] });
-        }
-
-        const items = (day.items ?? []).map((item: any) => {
-            for (const superset of item.supersetItems ?? []) {
-                if (superset?.trainingVideoId) {
-                    supersetVideoIds.add(superset.trainingVideoId);
-                }
+    const nestedVideoIds = new Set<string>();
+    for (const training of json.trainings ?? []) {
+        for (const item of training.items ?? []) {
+            if (item?.trainingVideoId) {
+                nestedVideoIds.add(item.trainingVideoId);
             }
-
-            return {
-                id: item.id,
-                order: item.order,
-                sets: item.sets ?? null,
-                repeats: item.repeats ?? null,
-                isSuperset: item.isSuperset,
-                trainingVideo: item.trainingVideo as TrainingVideoEntity | undefined,
-                supersetItems: item.supersetItems ?? [],
-            } as RawStaticPlanItem;
-        });
-
-        weeksMap.get(weekNumber)!.days.push({
-            dayIndex: day.dayIndex,
-            weekNumber,
-            items,
-        });
+        }
     }
-
-    const supersetVideosMap = await TrainingVideoService.ensureVideosExist(Array.from(supersetVideoIds));
-
-    const weeks = Array.from(weeksMap.values())
-        .sort((a, b) => a.weekNumber - b.weekNumber)
-        .map((week) => ({
-            weekNumber: week.weekNumber,
-            days: week.days.sort((a, b) => a.dayIndex - b.dayIndex),
-        }));
+    const nestedVideosMap = nestedVideoIds.size
+        ? await TrainingVideoService.ensureVideosExist(Array.from(nestedVideoIds))
+        : new Map<string, TrainingVideoEntity>();
 
     return {
         id: json.id,
@@ -108,27 +76,33 @@ async function serializeStaticPlan(plan: StaticTrainingPlanEntity): Promise<Seri
         imageId: json.imageId,
         durationInMinutes: json.durationInMinutes ?? null,
         level: json.level ?? null,
-        weeks: weeks.map((week) => ({
-            weekNumber: week.weekNumber,
-            days: week.days.map((day) => ({
-                dayIndex: day.dayIndex,
-                weekNumber: day.weekNumber,
-                items: day.items.map((item) => ({
-                    id: item.id,
-                    order: item.order,
-                    sets: item.sets,
-                    repeats: item.repeats,
-                    isSuperset: item.isSuperset,
-                    trainingVideo: serializeVideo(item.trainingVideo as any),
-                    supersetItems: item.supersetItems.map((superset) => ({
-                        trainingVideoId: superset.trainingVideoId,
-                        sets: superset.sets,
-                        repeats: superset.repeats,
-                        trainingVideo: serializeVideo(supersetVideosMap.get(superset.trainingVideoId)),
-                    })),
-                })),
-            })),
-        })),
+        trainings: (json.trainings ?? []).map((training: any) => {
+            const items = (training.items ?? []).map((item: any) => {
+                const video = item?.trainingVideoId ? nestedVideosMap.get(item.trainingVideoId) : undefined;
+                return {
+                    trainingVideoId: item.trainingVideoId,
+                    title: item.title ?? null,
+                    description: item.description ?? null,
+                    repeats: item.repeats ?? null,
+                    duration: item.duration ?? null,
+                    trainingVideo: serializeVideo(video),
+                } as SerializedStaticTrainingItem;
+            });
+
+            return {
+                id: training.id,
+                order: training.order,
+                type: training.type as StaticTrainingType,
+                title: training.title ?? null,
+                description: training.description ?? null,
+                sets: training.sets ?? null,
+                repeats: training.repeats ?? null,
+                duration: training.duration ?? null,
+                config: training.config ?? null,
+                trainingVideo: serializeVideo(training.trainingVideo as TrainingVideoEntity | undefined),
+                items,
+            } as SerializedStaticTraining;
+        }),
     };
 }
 
@@ -160,11 +134,20 @@ export async function deleteStaticTrainingPlanController(req: Request, res: Resp
 }
 
 export async function listStaticTrainingPlansController(req: Request, res: Response): Promise<void> {
-    const plans = await StaticTrainingPlanService.listStaticPlans();
+    const filters = {
+        search: toOptionalString(req.query.search),
+    };
+
+    const pagination = {
+        page: toOptionalNumber(req.query.page),
+        limit: toOptionalNumber(req.query.limit),
+    } as const;
+
+    const data = await StaticTrainingPlanService.listStaticPlans(filters, pagination);
     res.status(StatusCodes.OK).json({
         status: 'success',
         data: {
-            plans: plans.map((plan) => ({
+            plans: data.plans.map((plan) => ({
                 id: plan.id,
                 name: plan.name,
                 subTitle: plan.subTitle,
@@ -175,6 +158,7 @@ export async function listStaticTrainingPlansController(req: Request, res: Respo
                 createdAt: plan.createdAt,
                 updatedAt: plan.updatedAt,
             })),
+            pagination: data.pagination,
         },
     });
 }
@@ -214,12 +198,21 @@ function serializeVideo(video: TrainingVideoEntity | undefined): SerializedTrain
     };
 }
 
-interface RawStaticPlanItem {
-    id: string;
-    order: number;
-    sets: number | null;
-    repeats: number | null;
-    isSuperset: boolean;
-    trainingVideo?: TrainingVideoEntity;
-    supersetItems: Array<{ trainingVideoId: string; sets: number; repeats: number }>;
+function toOptionalString(value: unknown): string | undefined {
+    if (typeof value === 'string' && value.trim().length > 0) {
+        return value;
+    }
+    if (Array.isArray(value) && typeof value[0] === 'string') {
+        return value[0];
+    }
+    return undefined;
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+    const stringValue = toOptionalString(value);
+    if (!stringValue) {
+        return undefined;
+    }
+    const parsed = Number(stringValue);
+    return Number.isFinite(parsed) ? parsed : undefined;
 }

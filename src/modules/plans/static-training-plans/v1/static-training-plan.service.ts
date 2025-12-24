@@ -5,27 +5,29 @@ import { UserEntity } from '../../../user/v1/entity/user.entity.js';
 import { TrainingVideoService } from '../../../training-video/v1/training-video.service.js';
 import { TrainingVideoEntity } from '../../../training-video/v1/entity/training-video.entity.js';
 import {
-    StaticTrainingPlanDayPayload,
     StaticTrainingPlanRepository,
+    StaticTrainingPlanTrainingPayload,
+    StaticTrainingPlanTrainingType,
 } from './static-training-plan.repository.js';
 
-interface SupersetItemInput {
+interface TrainingGroupItemInput {
     trainingVideoId: string;
-    sets: number;
-    repeats: number;
+    title?: string | null;
+    description?: string | null;
+    repeats?: number | null;
+    duration?: number | null;
 }
 
-interface TrainingPlanItemInput {
-    trainingVideoId: string;
-    sets: number;
-    repeats: number;
-    isSuperset?: boolean;
-    supersetItems?: SupersetItemInput[];
-}
-
-interface StaticTrainingPlanDayInput {
-    dayNumber?: number;
-    items: TrainingPlanItemInput[];
+interface StaticTrainingPlanTrainingInput {
+    type: StaticTrainingPlanTrainingType;
+    trainingVideoId?: string;
+    sets?: number | null;
+    repeats?: number | null;
+    duration?: number | null;
+    title?: string | null;
+    description?: string | null;
+    items?: TrainingGroupItemInput[];
+    config?: Record<string, unknown> | null;
 }
 
 interface CreateStaticTrainingPlanPayload {
@@ -35,7 +37,7 @@ interface CreateStaticTrainingPlanPayload {
     imageId: string;
     durationInMinutes?: number | null;
     level?: string | null;
-    days: StaticTrainingPlanDayInput[];
+    trainings: StaticTrainingPlanTrainingInput[];
 }
 
 interface UpdateStaticTrainingPlanPayload {
@@ -45,17 +47,18 @@ interface UpdateStaticTrainingPlanPayload {
     imageId?: string;
     durationInMinutes?: number | null;
     level?: string | null;
-    days?: StaticTrainingPlanDayInput[];
+    trainings?: StaticTrainingPlanTrainingInput[];
 }
 
 export class StaticTrainingPlanService {
     static async createStaticPlan(actor: UserEntity, payload: CreateStaticTrainingPlanPayload) {
         this.ensureAdmin(actor);
-        this.assertExactlySevenDays(payload.days);
 
-        const videoIds = this.collectVideoIds(payload.days);
+        this.assertAtLeastOneTraining(payload.trainings);
+
+        const videoIds = this.collectVideoIds(payload.trainings);
         const videoMap = await TrainingVideoService.ensureVideosExist(videoIds);
-        const daysPayload = this.buildDaysPayload(this.normalizeDays(payload.days, videoMap));
+        const trainingsPayload = this.buildTrainingsPayload(payload.trainings, videoMap);
 
         const plan = await StaticTrainingPlanRepository.createPlan(
             payload.name,
@@ -64,7 +67,7 @@ export class StaticTrainingPlanService {
             payload.imageId,
             payload.durationInMinutes ?? null,
             payload.level ?? null,
-            daysPayload,
+            trainingsPayload,
         );
 
         const saved = await StaticTrainingPlanRepository.findById(plan.id);
@@ -98,15 +101,15 @@ export class StaticTrainingPlanService {
             meta.level = payload.level ?? null;
         }
 
-        let daysPayload: StaticTrainingPlanDayPayload[] | undefined;
-        if (payload.days) {
-            this.assertExactlySevenDays(payload.days);
-            const videoIds = this.collectVideoIds(payload.days);
+        let trainingsPayload: StaticTrainingPlanTrainingPayload[] | undefined;
+        if (payload.trainings) {
+            this.assertAtLeastOneTraining(payload.trainings);
+            const videoIds = this.collectVideoIds(payload.trainings);
             const videoMap = await TrainingVideoService.ensureVideosExist(videoIds);
-            daysPayload = this.buildDaysPayload(this.normalizeDays(payload.days, videoMap));
+            trainingsPayload = this.buildTrainingsPayload(payload.trainings, videoMap);
         }
 
-        const updated = await StaticTrainingPlanRepository.updatePlan(planId, meta, daysPayload);
+        const updated = await StaticTrainingPlanRepository.updatePlan(planId, meta, trainingsPayload);
         if (!updated) {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Static training plan not found');
         }
@@ -136,95 +139,105 @@ export class StaticTrainingPlanService {
         return plan;
     }
 
-    static listStaticPlans() {
-        return StaticTrainingPlanRepository.listPlans();
+    static listStaticPlans(
+        filters: { search?: string },
+        pagination: { page?: number; limit?: number },
+    ) {
+        return StaticTrainingPlanRepository.listPlans(filters, pagination);
     }
 
-    private static collectVideoIds(days: StaticTrainingPlanDayInput[]) {
+    private static collectVideoIds(trainings: StaticTrainingPlanTrainingInput[]) {
         const ids = new Set<string>();
-        for (const day of days) {
-            for (const item of day.items ?? []) {
-                ids.add(item.trainingVideoId);
-                if (item.isSuperset) {
-                    for (const superset of item.supersetItems ?? []) {
-                        ids.add(superset.trainingVideoId);
-                    }
+        for (const training of trainings ?? []) {
+            if (training.trainingVideoId) {
+                ids.add(training.trainingVideoId);
+            }
+            for (const item of training.items ?? []) {
+                if (item?.trainingVideoId) {
+                    ids.add(item.trainingVideoId);
                 }
             }
         }
         return Array.from(ids);
     }
 
-    private static normalizeDays(days: StaticTrainingPlanDayInput[], videoMap: Map<string, TrainingVideoEntity>) {
-        const template: NormalizedTrainingPlanItem[][] = Array.from({ length: 7 }, () => []);
-
-        days.forEach((day, index) => {
-            const position = day.dayNumber ? day.dayNumber - 1 : index;
-            if (position < 0 || position > 6) {
-                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'dayNumber must be between 1 and 7');
-            }
-            template[position] = (day.items ?? []).map((item) => this.normalizeItem(item, videoMap));
-        });
-
-        return template;
-    }
-
-    private static normalizeItem(
-        item: TrainingPlanItemInput,
+    private static buildTrainingsPayload(
+        trainings: StaticTrainingPlanTrainingInput[],
         videoMap: Map<string, TrainingVideoEntity>,
-    ): NormalizedTrainingPlanItem {
-        const video = videoMap.get(item.trainingVideoId);
-        if (!video) {
-            throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${item.trainingVideoId}`);
-        }
+    ): StaticTrainingPlanTrainingPayload[] {
+        return (trainings ?? []).map((training, index) => {
+            const type = training.type;
 
-        let supersetItems: SupersetItemInput[] | null = null;
-        if (item.isSuperset) {
-            supersetItems = (item.supersetItems ?? []).map((superset) => {
-                const supersetVideo = videoMap.get(superset.trainingVideoId);
-                if (!supersetVideo) {
-                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${superset.trainingVideoId}`);
+            if (type === 'REGULAR') {
+                if (!training.trainingVideoId) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'REGULAR training requires trainingVideoId');
+                }
+                const video = videoMap.get(training.trainingVideoId);
+                if (!video) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${training.trainingVideoId}`);
+                }
+
+                return {
+                    order: index + 1,
+                    type,
+                    title: training.title ?? video.title,
+                    description: training.description ?? video.description ?? null,
+                    sets: training.sets ?? null,
+                    repeats: training.repeats ?? null,
+                    duration: training.duration ?? null,
+                    trainingVideoId: training.trainingVideoId,
+                    items: null,
+                    config: training.config ?? null,
+                };
+            }
+
+            const items = training.items ?? [];
+            if (!items.length) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, `${type} training requires items`);
+            }
+            if ((type === 'SUPERSET' || type === 'DROPSET') && items.length < 2) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, `${type} training requires at least 2 items`);
+            }
+            if (type === 'CIRCUIT') {
+                const rounds = (training.config as any)?.rounds;
+                if (!Number.isInteger(rounds) || rounds <= 0) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'CIRCUIT training requires config.rounds as a positive integer');
+                }
+            }
+
+            const normalizedItems = items.map((item) => {
+                const id = item.trainingVideoId;
+                const video = videoMap.get(id);
+                if (!video) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${id}`);
                 }
                 return {
-                    trainingVideoId: superset.trainingVideoId,
-                    sets: superset.sets,
-                    repeats: superset.repeats,
+                    trainingVideoId: id,
+                    title: item.title ?? video.title,
+                    description: item.description ?? video.description ?? null,
+                    repeats: item.repeats ?? null,
+                    duration: item.duration ?? null,
                 };
             });
-        }
 
-        return {
-            trainingVideoId: item.trainingVideoId,
-            sets: item.sets,
-            repeats: item.repeats,
-            isSuperset: Boolean(item.isSuperset),
-            supersetItems,
-            trainingVideo: video,
-        };
+            return {
+                order: index + 1,
+                type,
+                title: training.title ?? null,
+                description: training.description ?? null,
+                sets: training.sets ?? null,
+                repeats: training.repeats ?? null,
+                duration: training.duration ?? null,
+                trainingVideoId: null,
+                items: normalizedItems,
+                config: training.config ?? null,
+            };
+        });
     }
 
-    private static buildDaysPayload(template: NormalizedTrainingPlanItem[][]): StaticTrainingPlanDayPayload[] {
-        return template.map((dayItems, index) => ({
-            dayIndex: index + 1,
-            weekNumber: Math.floor(index / 7) + 1,
-            items: dayItems.map((item, orderIndex) => ({
-                order: orderIndex + 1,
-                title: item.trainingVideo.title,
-                videoLink: item.trainingVideo.videoUrl,
-                description: item.trainingVideo.description ?? null,
-                duration: null,
-                repeats: item.repeats,
-                sets: item.sets,
-                trainingVideoId: item.trainingVideoId,
-                isSuperset: item.isSuperset,
-                supersetItems: item.isSuperset ? item.supersetItems ?? [] : null,
-            })),
-        }));
-    }
-
-    private static assertExactlySevenDays(days: StaticTrainingPlanDayInput[]) {
-        if (!Array.isArray(days) || days.length !== 7) {
-            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Plan must include exactly 7 days');
+    private static assertAtLeastOneTraining(trainings: StaticTrainingPlanTrainingInput[]) {
+        if (!Array.isArray(trainings) || trainings.length < 1) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Plan must include at least one training');
         }
     }
 
@@ -233,13 +246,4 @@ export class StaticTrainingPlanService {
             throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can manage static training plans');
         }
     }
-}
-
-interface NormalizedTrainingPlanItem {
-    trainingVideoId: string;
-    sets: number;
-    repeats: number;
-    isSuperset: boolean;
-    supersetItems: SupersetItemInput[] | null;
-    trainingVideo: TrainingVideoEntity;
 }

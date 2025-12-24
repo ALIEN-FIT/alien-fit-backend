@@ -4,6 +4,7 @@ import { Roles } from '../../../../constants/roles.js';
 import { validateRequest } from '../../../../middleware/validation.middleware.js';
 import {
     createStaticTrainingPlanSchema,
+    listStaticTrainingPlansQuerySchema,
     staticTrainingPlanParamSchema,
     updateStaticTrainingPlanSchema,
 } from './static-training-plan.validation.js';
@@ -17,7 +18,7 @@ import {
 
 export const staticTrainingPlanRouterV1 = express.Router();
 
-staticTrainingPlanRouterV1.get('/', listStaticTrainingPlansController);
+staticTrainingPlanRouterV1.get('/', validateRequest(listStaticTrainingPlansQuerySchema), listStaticTrainingPlansController);
 staticTrainingPlanRouterV1.get(
     '/:planId',
     validateRequest(staticTrainingPlanParamSchema),

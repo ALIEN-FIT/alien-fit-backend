@@ -15,6 +15,29 @@ export class StaticTrainingPlanEntity extends Model {
     declare readonly updatedAt: Date;
 }
 
+export const StaticTrainingPlanTrainingTypes = ['REGULAR', 'SUPERSET', 'DROPSET', 'CIRCUIT'] as const;
+export type StaticTrainingPlanTrainingType = (typeof StaticTrainingPlanTrainingTypes)[number];
+
+export class StaticTrainingPlanTrainingEntity extends Model {
+    declare id: string;
+    declare planId: string;
+    declare order: number;
+    declare type: StaticTrainingPlanTrainingType;
+
+    declare title: string | null;
+    declare description: string | null;
+    declare sets: number | null;
+    declare repeats: number | null;
+    declare duration: number | null;
+
+    declare trainingVideoId: string | null;
+    declare items: Array<Record<string, unknown>> | null;
+    declare config: Record<string, unknown> | null;
+
+    declare readonly createdAt: Date;
+    declare readonly updatedAt: Date;
+}
+
 export class StaticTrainingPlanDayEntity extends Model {
     declare id: string;
     declare planId: string;
@@ -80,6 +103,73 @@ StaticTrainingPlanEntity.init(
         modelName: 'StaticTrainingPlan',
         tableName: 'static_training_plans',
         timestamps: true,
+    },
+);
+
+StaticTrainingPlanTrainingEntity.init(
+    {
+        id: {
+            type: DataTypes.UUID,
+            defaultValue: DataTypes.UUIDV4,
+            primaryKey: true,
+        },
+        planId: {
+            type: DataTypes.UUID,
+            allowNull: false,
+        },
+        order: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+        },
+        type: {
+            type: DataTypes.ENUM(...StaticTrainingPlanTrainingTypes),
+            allowNull: false,
+            defaultValue: 'REGULAR',
+        },
+        title: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        description: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+        },
+        sets: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+        },
+        repeats: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+        },
+        duration: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+        },
+        trainingVideoId: {
+            type: DataTypes.UUID,
+            allowNull: true,
+        },
+        items: {
+            type: DataTypes.JSONB,
+            allowNull: true,
+        },
+        config: {
+            type: DataTypes.JSONB,
+            allowNull: true,
+        },
+    },
+    {
+        sequelize,
+        modelName: 'StaticTrainingPlanTraining',
+        tableName: 'static_training_plan_trainings',
+        timestamps: true,
+        indexes: [
+            {
+                fields: ['planId', 'order'],
+                unique: true,
+            },
+        ],
     },
 );
 
@@ -192,6 +282,14 @@ StaticTrainingPlanEntity.hasMany(StaticTrainingPlanDayEntity, {
 });
 StaticTrainingPlanDayEntity.belongsTo(StaticTrainingPlanEntity, { foreignKey: 'planId', as: 'plan' });
 
+StaticTrainingPlanEntity.hasMany(StaticTrainingPlanTrainingEntity, {
+    foreignKey: 'planId',
+    as: 'trainings',
+    onDelete: 'CASCADE',
+    hooks: true,
+});
+StaticTrainingPlanTrainingEntity.belongsTo(StaticTrainingPlanEntity, { foreignKey: 'planId', as: 'plan' });
+
 StaticTrainingPlanDayEntity.hasMany(StaticTrainingPlanItemEntity, {
     foreignKey: 'dayId',
     as: 'items',
@@ -201,3 +299,9 @@ StaticTrainingPlanDayEntity.hasMany(StaticTrainingPlanItemEntity, {
 StaticTrainingPlanItemEntity.belongsTo(StaticTrainingPlanDayEntity, { foreignKey: 'dayId', as: 'day' });
 StaticTrainingPlanItemEntity.belongsTo(TrainingVideoEntity, { foreignKey: 'trainingVideoId', as: 'trainingVideo' });
 TrainingVideoEntity.hasMany(StaticTrainingPlanItemEntity, { foreignKey: 'trainingVideoId', as: 'staticTrainingPlanItems' });
+
+StaticTrainingPlanTrainingEntity.belongsTo(TrainingVideoEntity, { foreignKey: 'trainingVideoId', as: 'trainingVideo' });
+TrainingVideoEntity.hasMany(StaticTrainingPlanTrainingEntity, {
+    foreignKey: 'trainingVideoId',
+    as: 'staticTrainingPlanTrainings',
+});
