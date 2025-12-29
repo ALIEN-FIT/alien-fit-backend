@@ -6,25 +6,48 @@ import {
     activateSubscriptionController,
     renewSubscriptionController,
     getSubscriptionStatusController,
+    createSubscriptionCheckoutController,
+    fawaterakWebhookController,
 } from './subscription.controller.js';
-import { subscriptionUserParamSchema } from './subscription.validation.js';
+import {
+    subscriptionActivateSchema,
+    subscriptionRenewSchema,
+    subscriptionCheckoutSchema,
+    fawaterakWebhookSchema,
+} from './subscription.validation.js';
 
 export const subscriptionRouterV1 = express.Router();
 
-subscriptionRouterV1.use(auth);
+// Webhook must be public (Fawaterak server-to-server)
+subscriptionRouterV1.post(
+    '/webhook/fawaterak',
+    express.json(),
+    validateRequest(fawaterakWebhookSchema),
+    fawaterakWebhookController,
+);
 
 subscriptionRouterV1.post(
     '/activate/:userId',
+    auth,
     authorizeRoles(Roles.ADMIN),
-    validateRequest(subscriptionUserParamSchema),
+    validateRequest(subscriptionActivateSchema),
     activateSubscriptionController,
 );
 
 subscriptionRouterV1.post(
     '/renew/:userId',
+    auth,
     authorizeRoles(Roles.ADMIN),
-    validateRequest(subscriptionUserParamSchema),
+    validateRequest(subscriptionRenewSchema),
     renewSubscriptionController,
 );
 
-subscriptionRouterV1.get('/status', getSubscriptionStatusController);
+subscriptionRouterV1.get('/status', auth, getSubscriptionStatusController);
+
+// User checkout
+subscriptionRouterV1.post(
+    '/checkout',
+    auth,
+    validateRequest(subscriptionCheckoutSchema),
+    createSubscriptionCheckoutController,
+);

@@ -48,6 +48,10 @@ const envSchema = z.object({
     CLOUDFLARE_ACCESS_KEY_ID: z.string().min(1, 'CLOUDFLARE_ACCESS_KEY_ID must not be empty'),
     HTTPS: z.boolean().default(false),
     calorieninjas_api_key: z.string().min(1, 'calorieninjas_api_key must not be empty'),
+
+    // Fawaterak payment integration (optional until enabled)
+    FAWATERAK_API_KEY: z.string().optional(),
+    FAWATERAK_BASE_URL: z.string().url().optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

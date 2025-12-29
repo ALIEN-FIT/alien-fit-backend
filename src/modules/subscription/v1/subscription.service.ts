@@ -5,6 +5,8 @@ import { SubscriptionRepository } from './subscription.repository.js';
 import { SubscriptionEntity } from './entity/subscription.entity.js';
 import { addDays } from '../../../utils/date.utils.js';
 
+const SUBSCRIPTION_CYCLE_DAYS = 30;
+
 interface SubscriptionStatus {
     isSubscribed: boolean;
     profileUpdateRequired: boolean;
@@ -40,10 +42,10 @@ async function hydrateSubscription(subscription: SubscriptionEntity | null): Pro
 }
 
 export class SubscriptionService {
-    static async activateSubscription(userId: string): Promise<SubscriptionEntity> {
+    static async activateSubscription(userId: string, cycles = 1): Promise<SubscriptionEntity> {
         await UserService.getUserById(userId);
         const startDate = new Date();
-        const endDate = addDays(startDate, 30);
+        const endDate = addDays(startDate, SUBSCRIPTION_CYCLE_DAYS * cycles);
 
         const existing = await SubscriptionRepository.findByUserId(userId);
         const nextProfileUpdateDue = existing?.lastProfileUpdateAt
@@ -61,12 +63,12 @@ export class SubscriptionService {
         return hydrateSubscription(subscription) as Promise<SubscriptionEntity>;
     }
 
-    static async renewSubscription(userId: string): Promise<SubscriptionEntity> {
+    static async renewSubscription(userId: string, cycles = 1): Promise<SubscriptionEntity> {
         await UserService.getUserById(userId);
         const now = new Date();
         const existing = await SubscriptionRepository.findByUserId(userId);
         const baseDate = existing?.endDate && existing.endDate > now ? existing.endDate : now;
-        const endDate = addDays(baseDate, 30);
+        const endDate = addDays(baseDate, SUBSCRIPTION_CYCLE_DAYS * cycles);
 
         const subscription = await SubscriptionRepository.upsert(userId, {
             isSubscribed: true,
