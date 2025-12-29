@@ -5,6 +5,7 @@ import { SubscriptionService } from '../../subscription/v1/subscription.service.
 import { DietPlanService } from '../../plans/diet/v1/diet-plan.service.js';
 import { TrainingPlanService } from '../../plans/training/v1/training-plan.service.js';
 import { TrackingRepository } from '../../tracking/v1/tracking.repository.js';
+import { UserProfileService } from '../../user-profile/v1/user-profile.service.js';
 
 
 export async function createUserController(req: Request, res: Response): Promise<void> {
@@ -21,6 +22,12 @@ export async function createUserController(req: Request, res: Response): Promise
 
 export async function getUserByIdController(req: Request, res: Response): Promise<void> {
     const user = await UserService.getUserById(req.params.id);
+
+    // User profile (best-effort; may not exist yet)
+    let userProfile: any = null;
+    try {
+        userProfile = await UserProfileService.getUserProfile(user.id.toString());
+    } catch { }
 
     // Subscription status
     const subscriptionStatus = await SubscriptionService.getStatus(user.id.toString());
@@ -60,6 +67,7 @@ export async function getUserByIdController(req: Request, res: Response): Promis
             trainingPlan,
             profile: {
                 isProfileComplete: (user as any).isProfileComplete ?? false,
+                userProfile,
             },
             trackingLast7,
         }
