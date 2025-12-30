@@ -76,6 +76,8 @@ export async function createSubscriptionCheckoutController(req: Request, res: Re
 export async function fawaterakWebhookController(req: Request, res: Response): Promise<void> {
     const payload = req.body;
 
+    console.log('Fawaterak Webhook received:', payload);
+
     if (!SubscriptionPaymentService.verifyPaidWebhookHash(payload)) {
         res.status(StatusCodes.UNAUTHORIZED).json({ status: 'fail', message: 'Invalid hashKey' });
         return;

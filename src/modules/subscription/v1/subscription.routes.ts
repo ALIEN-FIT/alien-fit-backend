@@ -20,7 +20,7 @@ export const subscriptionRouterV1 = express.Router();
 
 // Webhook must be public (Fawaterak server-to-server)
 subscriptionRouterV1.post(
-    '/webhook/fawaterak',
+    '/webhook/fawaterak_json',
     express.json(),
     validateRequest(fawaterakWebhookSchema),
     fawaterakWebhookController,
