@@ -8,6 +8,7 @@ import { initializeApp } from './app.js';
 import { passportConfig } from './config/passport.config.js';
 import { env } from './config/env.js';
 import { initializeSocketServer } from './socket/socket-server.js';
+import { startNotificationWorkers } from './workers/notification/index.js';
 
 const app = express();
 const PORT = env.PORT;
@@ -29,6 +30,7 @@ await initializeDatabase();
 passportConfig();
 initializeApp(app);
 initializeSocketServer(server);
+startNotificationWorkers();
 
 server.listen(PORT, () => {
     console.log(`Server running with Socket.io on ${USE_HTTPS ? 'HTTPS' : 'HTTP'} on port ${PORT}`);
