@@ -33,7 +33,6 @@ NotificationEntity.init(
         byUserId: {
             type: DataTypes.UUID,
             allowNull: true,
-            defaultValue: null,
         },
         type: {
             type: DataTypes.STRING,

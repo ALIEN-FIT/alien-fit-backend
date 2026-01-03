@@ -4,6 +4,7 @@ import { validateRequest } from '../../../middleware/validation.middleware.js';
 import { Roles } from '../../../constants/roles.js';
 import {
     adminBroadcastNotificationController,
+    getMyUnseenCountController,
     listMyNotificationsController,
     markAllReadController,
     markAllSeenController,
@@ -21,6 +22,8 @@ export const notificationRouterV1 = express.Router();
 notificationRouterV1.use(auth);
 
 notificationRouterV1.get('/my', validateRequest(listMyNotificationsSchema), listMyNotificationsController);
+
+notificationRouterV1.get('/my/unseen-count', getMyUnseenCountController);
 
 notificationRouterV1.patch('/my/seen', markAllSeenController);
 notificationRouterV1.patch('/my/read', markAllReadController);

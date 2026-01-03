@@ -23,6 +23,14 @@ export async function listMyNotificationsController(req: Request, res: Response)
     });
 }
 
+export async function getMyUnseenCountController(req: Request, res: Response) {
+    const result = await NotificationService.getMyUnseenCount(req.user!.id.toString());
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: result,
+    });
+}
+
 export async function markNotificationSeenController(req: Request, res: Response) {
     await NotificationService.markSeen(req.user!.id.toString(), req.params.notificationId);
     res.status(StatusCodes.NO_CONTENT).send();

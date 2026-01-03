@@ -12,6 +12,11 @@ interface ListInput {
 }
 
 export class NotificationService {
+    static async getMyUnseenCount(userId: string) {
+        const count = await NotificationRepository.countUnseenByUser(userId);
+        return { count };
+    }
+
     static async listMyNotifications(userId: string, input: ListInput) {
         const page = Number.isFinite(input.page) ? Math.max(Math.floor(input.page!), 1) : 1;
         const limit = Number.isFinite(input.limit) ? Math.max(Math.floor(input.limit!), 1) : 20;

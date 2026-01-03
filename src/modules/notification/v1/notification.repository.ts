@@ -16,7 +16,7 @@ export class NotificationRepository {
         isSeen?: boolean;
         isRead?: boolean;
     }) {
-        return NotificationEntity.create({
+        const notification = await NotificationEntity.create({
             userId: data.userId,
             byUserId: data.byUserId ?? null,
             type: data.type,
@@ -25,10 +25,45 @@ export class NotificationRepository {
             isSeen: data.isSeen ?? false,
             isRead: data.isRead ?? false,
         });
+
+        await this.trimToLimit(data.userId, 50);
+
+        return notification;
+    }
+
+    static async trimToLimit(userId: string, limit = 50) {
+        const count = await NotificationEntity.count({ where: { userId } });
+        if (count <= limit) {
+            return;
+        }
+
+        const extra = count - limit;
+        const oldest = await NotificationEntity.findAll({
+            where: { userId },
+            order: [['createdAt', 'ASC']],
+            limit: extra,
+            attributes: ['id'],
+        });
+
+        const idsToDelete = oldest.map((n) => n.id);
+        if (idsToDelete.length === 0) {
+            return;
+        }
+
+        await NotificationEntity.destroy({ where: { id: idsToDelete } });
     }
 
     static async findById(id: string) {
         return NotificationEntity.findByPk(id);
+    }
+
+    static async countUnseenByUser(userId: string) {
+        return NotificationEntity.count({
+            where: {
+                userId,
+                isSeen: false,
+            },
+        });
     }
 
     static async listByUser(
