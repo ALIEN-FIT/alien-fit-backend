@@ -83,5 +83,11 @@
   "notification.adminUserReportBody": "تم تقديم بلاغ مستخدم بواسطة {{byUserName}}",
   "notification.adminSupport": "تذكرة دعم جديدة بواسطة {{byUserName}}",
   "notification.adminSupportTitle": "تذكرة دعم",
-  "notification.adminSupportBody": "تم إنشاء تذكرة دعم بواسطة {{byUserName}}"
+  "notification.adminSupportBody": "تم إنشاء تذكرة دعم بواسطة {{byUserName}}",
+  "OTP sent": "تم إرسال رمز التحقق",
+  "Failed to send OTP": "فشل في إرسال رمز التحقق",
+  "Please wait before requesting another code": "يرجى الانتظار قبل طلب رمز جديد",
+  "Too many attempts": "محاولات كثيرة جدًا",
+  "Password reset successfully": "تمت إعادة تعيين كلمة المرور بنجاح",
+  "Provider must be a valid mobile number": "يجب إدخال رقم هاتف صحيح"
 }

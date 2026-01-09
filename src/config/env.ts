@@ -52,6 +52,20 @@ const envSchema = z.object({
     // Fawaterak payment integration (optional until enabled)
     FAWATERAK_API_KEY: z.string().optional(),
     FAWATERAK_BASE_URL: z.string().url().optional(),
+
+    // WhatsApp Cloud API (OTP)
+    WHATSAPP_ACCESS_TOKEN: z.string().optional(),
+    WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+    WHATSAPP_OTP_TEMPLATE_NAME: z.string().optional(),
+    // WhatsApp template language codes
+    WHATSAPP_OTP_LANG_EN: z.string().optional(),
+    WHATSAPP_OTP_LANG_AR: z.string().optional(),
+
+    // OTP behavior
+    OTP_SECRET: z.string().optional(),
+    OTP_TTL_SECONDS: z.coerce.number().int().positive().optional(),
+    OTP_COOLDOWN_SECONDS: z.coerce.number().int().positive().optional(),
+    OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

@@ -11,6 +11,8 @@ import { MediaEntity } from '../../../media/v1/model/media.model.js';
 export class UserEntity extends Model {
     declare id: string;
     declare provider: string;
+    declare phone?: string | null;
+    declare phoneVerifiedAt?: Date | null;
     declare password?: string;
     declare name: string;
     declare role: string;
@@ -61,6 +63,19 @@ UserEntity.init(
             validate: {
                 is: /^((\+?\d{1,3}[- ]?)?\d{10,15}|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/,
             },
+        },
+        phone: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            defaultValue: null,
+            validate: {
+                is: /^\+[1-9]\d{1,14}$/,
+            },
+        },
+        phoneVerifiedAt: {
+            type: DataTypes.DATE,
+            allowNull: true,
+            defaultValue: null,
         },
         password: {
             type: DataTypes.STRING,

@@ -32,6 +32,14 @@ import { errorMiddleware } from './middleware/error.middleware.js';
 import { notFoundMiddleware } from './middleware/not-found.middleware.js';
 
 export function initializeApp(app: express.Application) {
+    // Support clients that send language as `lang` header
+    app.use((req, _res, next) => {
+        const lang = req.headers['lang'];
+        if (lang && !req.headers['accept-language']) {
+            req.headers['accept-language'] = String(lang);
+        }
+        next();
+    });
     app.use(i18n.init);
     app.set('trust proxy', 1);
     app.set('query parser', (str: string) => qs.parse(str));

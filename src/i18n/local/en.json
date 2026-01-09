@@ -21,5 +21,11 @@
     "notification.adminUserReportBody": "A user report has been submitted by {byUserName}",
     "notification.adminSupport": "New support ticket by {byUserName}",
     "notification.adminSupportTitle": "Support Ticket",
-    "notification.adminSupportBody": "A support ticket has been created by {byUserName}"
+    "notification.adminSupportBody": "A support ticket has been created by {byUserName}",
+    "OTP sent": "OTP sent",
+    "Failed to send OTP": "Failed to send OTP",
+    "Please wait before requesting another code": "Please wait before requesting another code",
+    "Too many attempts": "Too many attempts",
+    "Password reset successfully": "Password reset successfully",
+    "Provider must be a valid mobile number": "Provider must be a valid mobile number"
 }

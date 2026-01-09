@@ -36,6 +36,38 @@ export async function registerController(req: Request, res: Response): Promise<v
     });
 }
 
+export async function requestRegisterOtpController(req: Request, res: Response): Promise<void> {
+    const { provider } = req.body;
+    const langHeader = (req.headers['lang'] ?? req.headers['accept-language'] ?? 'ar') as string;
+    await AuthService.requestRegisterOtp(provider, langHeader);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { message: 'OTP sent' }
+    });
+}
+
+export async function requestForgotPasswordOtpController(req: Request, res: Response): Promise<void> {
+    const { provider } = req.body;
+    const langHeader = (req.headers['lang'] ?? req.headers['accept-language'] ?? 'ar') as string;
+    await AuthService.requestForgotPasswordOtp(provider, langHeader);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { message: 'OTP sent' }
+    });
+}
+
+export async function resetPasswordWithOtpController(req: Request, res: Response): Promise<void> {
+    const { provider, otp, newPassword } = req.body;
+    await AuthService.resetPasswordWithOtp(provider, otp, newPassword);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { message: 'Password reset successfully' }
+    });
+}
+
 export async function refreshTokenController(req: Request, res: Response): Promise<void> {
     const { refreshToken } = req.body;
     const { accessToken, newRefreshToken } = await AuthService.refreshToken(refreshToken);
