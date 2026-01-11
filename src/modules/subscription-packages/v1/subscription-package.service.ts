@@ -1,6 +1,6 @@
 import { StatusCodes } from 'http-status-codes';
 import { HttpResponseError } from '../../../utils/appError.js';
-import { SubscriptionPackageEntity } from './entity/subscription-package.entity.js';
+import { SubscriptionPackageEntity, SubscriptionPackageTypedPrices, SubscriptionType } from './entity/subscription-package.entity.js';
 import { SubscriptionPackageRepository } from './subscription-package.repository.js';
 import { SubscriptionCurrencyRepository } from './subscription-currency.repository.js';
 
@@ -40,10 +40,21 @@ function validatePrices(prices: Record<string, number>, supportedCodes: string[]
     }
 }
 
+function validateTypedPrices(prices: SubscriptionPackageTypedPrices, supportedCodes: string[]) {
+    const requiredTypes: SubscriptionType[] = ['diet', 'training', 'both'];
+    for (const type of requiredTypes) {
+        const perTypePrices = (prices as any)?.[type] as Record<string, number> | undefined;
+        if (!perTypePrices || typeof perTypePrices !== 'object') {
+            throw new HttpResponseError(StatusCodes.UNPROCESSABLE_ENTITY, `Missing prices for subscription type: ${type}`);
+        }
+        validatePrices(perTypePrices, supportedCodes);
+    }
+}
+
 export interface CreateSubscriptionPackageInput {
     name: string;
     description?: string | null;
-    prices: Record<string, number>;
+    prices: SubscriptionPackageTypedPrices;
     features: string[];
     cycles: number;
     isActive?: boolean;
@@ -75,7 +86,7 @@ export class SubscriptionPackageService {
 
     static async create(input: CreateSubscriptionPackageInput): Promise<SubscriptionPackageEntity> {
         const supportedCodes = await getSupportedCurrencyCodes();
-        validatePrices(input.prices, supportedCodes);
+        validateTypedPrices(input.prices, supportedCodes);
 
         const created = await SubscriptionPackageRepository.create({
             name: input.name,
@@ -95,8 +106,8 @@ export class SubscriptionPackageService {
         }
 
         const supportedCodes = await getSupportedCurrencyCodes();
-        const nextPrices = input.prices ?? (existing.prices as Record<string, number>);
-        validatePrices(nextPrices, supportedCodes);
+        const nextPrices = (input.prices ?? (existing.prices as SubscriptionPackageTypedPrices)) as SubscriptionPackageTypedPrices;
+        validateTypedPrices(nextPrices, supportedCodes);
 
         await existing.update({
             ...(input.name !== undefined ? { name: input.name } : {}),

@@ -9,6 +9,9 @@ export class SubscriptionPaymentEntity extends Model {
     declare userId: string;
     declare packageId: string;
 
+    // The subscription type the user purchased (diet/training/both)
+    declare subscriptionType: 'diet' | 'training' | 'both';
+
     declare provider: 'fawaterak';
     declare status: SubscriptionPaymentStatus;
 
@@ -43,6 +46,11 @@ SubscriptionPaymentEntity.init(
         packageId: {
             type: DataTypes.UUID,
             allowNull: false,
+        },
+        subscriptionType: {
+            type: DataTypes.STRING(20),
+            allowNull: false,
+            defaultValue: 'both',
         },
         provider: {
             type: DataTypes.STRING(50),

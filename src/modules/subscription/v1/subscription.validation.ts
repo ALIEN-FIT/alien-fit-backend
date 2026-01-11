@@ -7,18 +7,21 @@ export const subscriptionUserParamSchema = Joi.object({
 
 export const subscriptionActivateSchema = Joi.object({
     userId: JoiCustomValidateObjectId('User ID', true),
+    subscriptionType: Joi.string().trim().lowercase().valid('diet', 'training', 'both').optional(),
     cycles: Joi.number().integer().min(1).max(120).optional(),
     packageId: JoiCustomValidateObjectId('Package ID', true).optional(),
 }).oxor('cycles', 'packageId');
 
 export const subscriptionRenewSchema = Joi.object({
     userId: JoiCustomValidateObjectId('User ID', true),
+    subscriptionType: Joi.string().trim().lowercase().valid('diet', 'training', 'both').optional(),
     cycles: Joi.number().integer().min(1).max(120).optional(),
     packageId: JoiCustomValidateObjectId('Package ID', true).optional(),
 }).oxor('cycles', 'packageId');
 
 export const subscriptionCheckoutSchema = Joi.object({
     packageId: JoiCustomValidateObjectId('Package ID', true),
+    subscriptionType: Joi.string().trim().lowercase().valid('diet', 'training', 'both').required(),
     currency: Joi.string().trim().uppercase().pattern(/^[A-Z]{3,10}$/).required(),
     redirectionUrls: Joi.object({
         successUrl: Joi.string().uri().optional(),

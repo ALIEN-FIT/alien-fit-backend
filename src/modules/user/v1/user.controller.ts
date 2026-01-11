@@ -62,6 +62,8 @@ export async function getUserByIdController(req: Request, res: Response): Promis
             subscriptionStatus: {
                 isSubscribed: subscriptionStatus.isSubscribed,
                 profileUpdateRequired: subscriptionStatus.profileUpdateRequired,
+                subscriptionType: subscriptionStatus.subscriptionType,
+                details: subscriptionStatus.details,
             },
             dietPlan,
             trainingPlan,

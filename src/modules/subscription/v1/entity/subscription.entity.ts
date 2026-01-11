@@ -8,6 +8,13 @@ export class SubscriptionEntity extends Model {
     declare isSubscribed: boolean;
     declare startDate: Date | null;
     declare endDate: Date | null;
+
+    // Per-type subscriptions (new flow)
+    declare dietStartDate: Date | null;
+    declare dietEndDate: Date | null;
+    declare trainingStartDate: Date | null;
+    declare trainingEndDate: Date | null;
+
     declare lastProfileUpdateAt: Date | null;
     declare nextProfileUpdateDue: Date | null;
     declare isActive: boolean;
@@ -37,6 +44,23 @@ SubscriptionEntity.init(
             allowNull: true,
         },
         endDate: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
+
+        dietStartDate: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
+        dietEndDate: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
+        trainingStartDate: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
+        trainingEndDate: {
             type: DataTypes.DATE,
             allowNull: true,
         },

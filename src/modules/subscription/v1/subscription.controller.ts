@@ -7,12 +7,12 @@ import { SubscriptionPaymentService } from './subscription-payment.service.js';
 export async function activateSubscriptionController(req: Request, res: Response): Promise<void> {
     const { userId } = req.params;
 
-    const { cycles, packageId } = req.body ?? {};
+    const { cycles, packageId, subscriptionType } = req.body ?? {};
     const effectiveCycles = packageId
         ? (await SubscriptionPackageService.requireActiveById(packageId)).cycles
         : (cycles ?? 1);
 
-    const subscription = await SubscriptionService.activateSubscription(userId, effectiveCycles);
+    const subscription = await SubscriptionService.activateSubscription(userId, effectiveCycles, subscriptionType);
 
     res.status(StatusCodes.CREATED).json({
         status: 'success',
@@ -23,12 +23,12 @@ export async function activateSubscriptionController(req: Request, res: Response
 export async function renewSubscriptionController(req: Request, res: Response): Promise<void> {
     const { userId } = req.params;
 
-    const { cycles, packageId } = req.body ?? {};
+    const { cycles, packageId, subscriptionType } = req.body ?? {};
     const effectiveCycles = packageId
         ? (await SubscriptionPackageService.requireActiveById(packageId)).cycles
         : (cycles ?? 1);
 
-    const subscription = await SubscriptionService.renewSubscription(userId, effectiveCycles);
+    const subscription = await SubscriptionService.renewSubscription(userId, effectiveCycles, subscriptionType);
 
     res.status(StatusCodes.OK).json({
         status: 'success',
@@ -48,11 +48,12 @@ export async function getSubscriptionStatusController(req: Request, res: Respons
 
 export async function createSubscriptionCheckoutController(req: Request, res: Response): Promise<void> {
     const userId = req.user!.id.toString();
-    const { packageId, currency, redirectionUrls } = req.body;
+    const { packageId, currency, redirectionUrls, subscriptionType } = req.body;
 
     const payment = await SubscriptionPaymentService.checkout({
         userId,
         packageId,
+        subscriptionType,
         currency,
         redirectionUrls,
     });

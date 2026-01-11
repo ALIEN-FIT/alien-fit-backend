@@ -6,6 +6,7 @@ import { DietPlanRepository } from './diet-plan.repository.js';
 import { DietPlanEntity } from './entity/diet-plan.entity.js';
 import { UserEntity } from '../../../user/v1/entity/user.entity.js';
 import { addWeeks, startOfDayUTC } from '../../../../utils/date.utils.js';
+import { SubscriptionService } from '../../../subscription/v1/subscription.service.js';
 
 interface FoodInput {
     name: string;
@@ -43,6 +44,7 @@ export class DietPlanService {
         }
 
         await UserService.getUserById(userId);
+        await SubscriptionService.requireActiveSubscriptionForType(userId, 'diet');
 
         const startDate = payload.startDate ? new Date(payload.startDate) : new Date();
         if (Number.isNaN(startDate.getTime())) {

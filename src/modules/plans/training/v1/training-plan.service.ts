@@ -8,6 +8,7 @@ import { UserEntity } from '../../../user/v1/entity/user.entity.js';
 import { addDays, addWeeks, startOfDayUTC } from '../../../../utils/date.utils.js';
 import { TrainingVideoService } from '../../../training-video/v1/training-video.service.js';
 import { TrainingVideoEntity } from '../../../training-video/v1/entity/training-video.entity.js';
+import { SubscriptionService } from '../../../subscription/v1/subscription.service.js';
 
 interface SupersetItemInput {
     trainingVideoId: string;
@@ -48,6 +49,7 @@ export class TrainingPlanService {
         }
 
         await UserService.getUserById(userId);
+        await SubscriptionService.requireActiveSubscriptionForType(userId, 'training');
 
         const startDate = payload.startDate ? new Date(payload.startDate) : new Date();
         if (Number.isNaN(startDate.getTime())) {

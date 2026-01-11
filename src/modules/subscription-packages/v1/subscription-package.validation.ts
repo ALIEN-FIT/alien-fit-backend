@@ -6,6 +6,11 @@ const pricesSchema = Joi.object()
     .pattern(/^[A-Z]{3,10}$/, Joi.number().positive().precision(2).required())
     .min(1)
     .required();
+const typedPricesSchema = Joi.object({
+    diet: pricesSchema.required(),
+    training: pricesSchema.required(),
+    both: pricesSchema.required(),
+}).required();
 
 export const packageIdParamSchema = Joi.object({
     packageId: JoiCustomValidateObjectId('Package ID', true),
@@ -14,7 +19,7 @@ export const packageIdParamSchema = Joi.object({
 export const createSubscriptionPackageSchema = Joi.object({
     name: Joi.string().trim().min(2).max(120).required(),
     description: Joi.string().trim().max(5000).allow('', null).optional(),
-    prices: pricesSchema,
+    prices: typedPricesSchema,
     features: Joi.array().items(Joi.string().trim().min(1).max(200)).default([]),
     cycles: Joi.number().integer().min(1).max(120).required(),
     isActive: Joi.boolean().optional(),
@@ -24,7 +29,7 @@ export const updateSubscriptionPackageSchema = Joi.object({
     packageId: JoiCustomValidateObjectId('Package ID', true),
     name: Joi.string().trim().min(2).max(120).optional(),
     description: Joi.string().trim().max(5000).allow('', null).optional(),
-    prices: pricesSchema.optional(),
+    prices: typedPricesSchema.optional(),
     features: Joi.array().items(Joi.string().trim().min(1).max(200)).optional(),
     cycles: Joi.number().integer().min(1).max(120).optional(),
     isActive: Joi.boolean().optional(),

@@ -11,6 +11,7 @@ import { SubscriptionPaymentRepository } from './subscription-payment.repository
 export interface SubscriptionCheckoutInput {
     userId: string;
     packageId: string;
+    subscriptionType: 'diet' | 'training' | 'both';
     currency: string;
     redirectionUrls?: {
         successUrl?: string;
@@ -68,16 +69,26 @@ export class SubscriptionPaymentService {
         const user = await UserService.getUserById(input.userId);
         const pkg = await SubscriptionPackageService.requireActiveById(input.packageId);
 
+        const subscriptionType = String(input.subscriptionType).trim().toLowerCase() as 'diet' | 'training' | 'both';
+        if (!['diet', 'training', 'both'].includes(subscriptionType)) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Invalid subscriptionType');
+        }
+
         const currency = String(input.currency).trim().toUpperCase();
-        const prices = (pkg.prices ?? {}) as Record<string, number>;
+        const typedPrices = (pkg.prices ?? {}) as any;
+        const prices = (typedPrices?.[subscriptionType] ?? {}) as Record<string, number>;
         const amount = prices[currency];
         if (amount === undefined) {
-            throw new HttpResponseError(StatusCodes.UNPROCESSABLE_ENTITY, `Package has no price for currency ${currency}`);
+            throw new HttpResponseError(
+                StatusCodes.UNPROCESSABLE_ENTITY,
+                `Package has no price for ${subscriptionType} subscription in currency ${currency}`
+            );
         }
 
         const payment = await SubscriptionPaymentRepository.create({
             userId: user.id,
             packageId: pkg.id,
+            subscriptionType,
             provider: 'fawaterak',
             status: 'pending',
             currency,
@@ -105,6 +116,7 @@ export class SubscriptionPaymentService {
                 paymentId: payment.id,
                 userId: user.id,
                 packageId: pkg.id,
+                subscriptionType,
             },
         };
 
@@ -166,7 +178,6 @@ export class SubscriptionPaymentService {
         if (existing.status === 'paid') {
             return { payment: existing, subscriptionActivated: true };
         }
-
         const invoiceStatus = String(payload.invoice_status ?? '').toLowerCase();
 
         if (invoiceStatus === 'paid') {
@@ -177,12 +188,14 @@ export class SubscriptionPaymentService {
             });
 
             const pkg = await SubscriptionPackageService.requireActiveById(existing.packageId);
-            const status = await SubscriptionService.getStatus(existing.userId);
-            if (status.isSubscribed) {
-                await SubscriptionService.renewSubscription(existing.userId, pkg.cycles);
-            } else {
-                await SubscriptionService.activateSubscription(existing.userId, pkg.cycles);
-            }
+
+            const subscriptionType = (existing.subscriptionType ?? (payload as any)?.payLoad?.subscriptionType ?? 'both') as
+                | 'diet'
+                | 'training'
+                | 'both';
+
+            // Treat payments as renewal/extension, not overwrite.
+            await SubscriptionService.renewSubscription(existing.userId, pkg.cycles, subscriptionType);
 
             return { payment: existing, subscriptionActivated: true };
         }
