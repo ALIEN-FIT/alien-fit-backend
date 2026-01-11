@@ -83,6 +83,16 @@ export class TrainingPlanService {
         return plan;
     }
 
+    static getCurrentWeekNumber(startDate: Date): number {
+        const now = startOfDayUTC(new Date());
+        const start = startOfDayUTC(startDate);
+        const daysDiff = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        const weekNumber = Math.floor(daysDiff / 7) + 1;
+
+        // Clamp between 1 and 4
+        return Math.max(1, Math.min(4, weekNumber));
+    }
+
     private static collectVideoIds(days: TrainingPlanDayInput[]): string[] {
         const ids = new Set<string>();
         for (const day of days) {

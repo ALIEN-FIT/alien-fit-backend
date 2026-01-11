@@ -51,3 +51,9 @@ export const createTrainingPlanSchema = Joi.object({
 export const trainingPlanUserParamSchema = Joi.object({
     userId: JoiCustomValidateObjectId('User ID', true),
 });
+
+export const getMyTrainingPlanQuerySchema = Joi.object({
+    week: Joi.number().integer().min(1).max(4).optional(),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(10),
+});

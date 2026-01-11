@@ -59,13 +59,44 @@ interface SerializedTrainingVideo {
     }>;
 }
 
-async function serializeTrainingPlan(plan: TrainingPlanEntity): Promise<SerializedTrainingPlan> {
+async function serializeTrainingPlan(
+    plan: TrainingPlanEntity,
+    options?: {
+        weekNumber?: number;
+        page?: number;
+        limit?: number;
+    }
+): Promise<SerializedTrainingPlan | { days: any[], pagination: { page: number, limit: number, total: number } }> {
     const json = plan.toJSON() as any;
     const weeksMap = new Map<number, WeekAccumulator>();
     const supersetVideoIds = new Set<string>();
     const trackingMap = await buildTrackingMap(json.userId, json.days ?? []);
 
-    for (const day of json.days ?? []) {
+    // Filter days based on options
+    let filteredDays = json.days ?? [];
+
+    if (options?.weekNumber) {
+        // Filter by specific week number
+        filteredDays = filteredDays.filter((day: any) => day.weekNumber === options.weekNumber);
+    } else if (options?.page !== undefined && options?.limit !== undefined) {
+        // Pagination mode
+        const startIndex = (options.page - 1) * options.limit;
+        const endIndex = startIndex + options.limit;
+        const paginatedDays = filteredDays.slice(startIndex, endIndex);
+
+        const processedDays = await processDays(paginatedDays, trackingMap, supersetVideoIds);
+
+        return {
+            days: processedDays,
+            pagination: {
+                page: options.page,
+                limit: options.limit,
+                total: filteredDays.length,
+            },
+        };
+    }
+
+    for (const day of filteredDays) {
         if (!weeksMap.has(day.weekNumber)) {
             weeksMap.set(day.weekNumber, { weekNumber: day.weekNumber, days: [] });
         }
@@ -177,8 +208,28 @@ export async function getTrainingPlanController(req: Request, res: Response): Pr
 
 export async function getMyTrainingPlanController(req: Request, res: Response): Promise<void> {
     const user = req.user as UserEntity;
+    const { week, page, limit } = req.query as { week?: string; page?: string; limit?: string };
+
     const plan = await TrainingPlanService.getTrainingPlan(user, user.id.toString());
-    const trainingPlan = await serializeTrainingPlan(plan);
+
+    let options: { weekNumber?: number; page?: number; limit?: number } | undefined;
+
+    if (week) {
+        // Return specific week
+        options = { weekNumber: parseInt(week, 10) };
+    } else if (!week && !page && !limit) {
+        // Return current week (default behavior)
+        const currentWeek = TrainingPlanService.getCurrentWeekNumber(plan.startDate as Date);
+        options = { weekNumber: currentWeek };
+    } else {
+        // Return with pagination
+        options = {
+            page: page ? parseInt(page, 10) : 1,
+            limit: limit ? parseInt(limit, 10) : 10,
+        };
+    }
+
+    const trainingPlan = await serializeTrainingPlan(plan, options);
 
     res.status(StatusCodes.OK).json({
         status: 'success',
@@ -244,6 +295,86 @@ async function buildTrackingMap(
         map.set(toDateOnlyString(tracking.date as Date | string), tracking);
     }
     return map;
+}
+
+async function processDays(
+    days: any[],
+    trackingMap: Map<string, DailyTrackingEntity>,
+    supersetVideoIds: Set<string>,
+) {
+    const processedDays = [];
+
+    for (const day of days) {
+        const dayDateKey = toDateOnlyString(day.date);
+        const isDone = trackingMap.get(dayDateKey)?.trainingDone ?? false;
+        const completedIds = new Set<string>(trackingMap.get(dayDateKey)?.trainingCompletedItemIds ?? []);
+
+        const items = (day.items ?? []).map((item: any) => {
+            for (const superset of item.supersetItems ?? []) {
+                if (superset.trainingVideoId) {
+                    supersetVideoIds.add(superset.trainingVideoId);
+                }
+            }
+            for (const ev of (item as any).extraVideos ?? []) {
+                if (ev.trainingVideoId) {
+                    supersetVideoIds.add(ev.trainingVideoId);
+                }
+            }
+
+            return {
+                id: item.id,
+                order: item.order,
+                sets: item.sets ?? null,
+                repeats: item.repeats ?? null,
+                isSuperset: item.isSuperset,
+                isDone: completedIds.has(item.id),
+                itemType: item.itemType ?? (item.isSuperset ? 'SUPERSET' : 'REGULAR'),
+                trainingVideo: item.trainingVideo,
+                supersetItems: item.supersetItems ?? [],
+                extraVideos: item.extraVideos ?? [],
+                dropsetConfig: item.dropsetConfig ?? null,
+                circuitGroup: item.circuitGroup ?? null,
+            };
+        });
+
+        processedDays.push({
+            dayIndex: day.dayIndex,
+            weekNumber: day.weekNumber,
+            date: day.date,
+            isDone,
+            items,
+        });
+    }
+
+    // Populate superset videos
+    const supersetVideosMap = await TrainingVideoService.ensureVideosExist(Array.from(supersetVideoIds));
+
+    // Serialize videos in items
+    for (const day of processedDays) {
+        day.items = day.items.map((item: any) => ({
+            id: item.id,
+            order: item.order,
+            sets: item.sets,
+            repeats: item.repeats,
+            isSuperset: item.isSuperset,
+            itemType: item.itemType,
+            isDone: item.isDone,
+            trainingVideo: serializeVideo(item.trainingVideo),
+            supersetItems: item.supersetItems.map((superset: any) => ({
+                trainingVideoId: superset.trainingVideoId,
+                sets: superset.sets,
+                repeats: superset.repeats,
+                trainingVideo: serializeVideo(supersetVideosMap.get(superset.trainingVideoId)),
+            })),
+            extraVideos: item.extraVideos.map((ev: any) => ({
+                trainingVideo: serializeVideo(supersetVideosMap.get(ev.trainingVideoId)),
+            })),
+            dropsetConfig: item.dropsetConfig,
+            circuitGroup: item.circuitGroup,
+        }));
+    }
+
+    return processedDays;
 }
 
 function toDateOnlyString(date: Date | string): string {

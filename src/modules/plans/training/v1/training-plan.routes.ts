@@ -10,6 +10,7 @@ import {
 import {
     createTrainingPlanSchema,
     trainingPlanUserParamSchema,
+    getMyTrainingPlanQuerySchema,
 } from './training-plan.validation.js';
 
 export const trainingPlanRouterV1 = express.Router();
@@ -25,6 +26,7 @@ trainingPlanRouterV1.post(
 
 trainingPlanRouterV1.get(
     '/me',
+    validateRequest(getMyTrainingPlanQuerySchema),
     getMyTrainingPlanController,
 );
 
