@@ -15,6 +15,7 @@ export class MessageEntity extends Model {
     declare senderRole: SenderRole;
     declare messageType: MessageType;
     declare content: string | null;
+    declare isRead: boolean;
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
 }
@@ -47,6 +48,11 @@ MessageEntity.init(
             type: DataTypes.TEXT,
             allowNull: true,
             defaultValue: '',
+        },
+        isRead: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
         },
     },
     {

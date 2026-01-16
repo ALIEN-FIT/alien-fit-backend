@@ -11,6 +11,7 @@ import { UserEntity } from '../../user/v1/entity/user.entity.js';
 export async function getMyChatController(req: Request, res: Response): Promise<void> {
     const userId = req.user!.id.toString();
     const chat = await ChatService.getOrCreateUserChat(userId);
+    const unreadCount = await ChatService.countUnreadTrainerMessages(userId);
     const presence = await PresenceService.getPresence(userId);
 
     res.status(StatusCodes.OK).json({
@@ -20,6 +21,7 @@ export async function getMyChatController(req: Request, res: Response): Promise<
                 id: chat.id,
                 lastMessageAt: chat.lastMessageAt,
                 lastMessagePreview: chat.lastMessagePreview,
+                unreadCount,
             },
             presence,
         },
@@ -66,6 +68,7 @@ export async function listChatsController(req: Request, res: Response): Promise<
     });
 
     const presences = await Promise.all(result.chats.map((chat) => PresenceService.getPresence(chat.userId)));
+    const unreadByChat = result.unreadByChat ?? {};
 
     res.status(StatusCodes.OK).json({
         status: 'success',
@@ -75,6 +78,7 @@ export async function listChatsController(req: Request, res: Response): Promise<
             lastMessageAt: chat.lastMessageAt,
             lastMessagePreview: chat.lastMessagePreview,
             presence: presences[index],
+            unreadCount: unreadByChat[chat.id] ?? 0,
         })),
         meta: {
             page: result.page,
@@ -99,6 +103,32 @@ export async function getMessagesForUserController(req: Request, res: Response):
     res.status(StatusCodes.OK).json({
         status: 'success',
         data: messages.map((message) => mapMessageForTrainerViewer(message)),
+    });
+}
+
+export async function markMyTrainerMessagesReadController(req: Request, res: Response): Promise<void> {
+    const userId = req.user!.id.toString();
+    const updated = await ChatService.markTrainerMessagesAsRead(userId);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: {
+            updated,
+        },
+    });
+}
+
+export async function markUserMessagesReadController(req: Request, res: Response): Promise<void> {
+    const targetUserId = req.params.userId;
+
+    await UserService.getUserById(targetUserId);
+    const updated = await ChatService.markUserMessagesAsRead(targetUserId);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: {
+            updated,
+        },
     });
 }
 
@@ -157,6 +187,7 @@ function mapMessageForUserViewer(message: MessageEntity, viewerId: string) {
         createdAt: message.createdAt,
         senderType,
         isMine,
+        isRead: message.isRead,
     };
 }
 
@@ -170,6 +201,7 @@ function mapMessageForTrainerViewer(message: MessageEntity) {
         content: message.content ?? '',
         media: formatMessageMedia(message),
         createdAt: message.createdAt,
+        isRead: message.isRead,
     };
 }
 

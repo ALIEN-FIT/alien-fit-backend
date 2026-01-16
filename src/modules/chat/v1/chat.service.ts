@@ -1,4 +1,4 @@
-import { FindAndCountOptions, Op } from 'sequelize';
+import { FindAndCountOptions, Op, fn } from 'sequelize';
 import { ChatEntity } from './entity/chat.entity.js';
 import { MessageEntity, MessageType, SenderRole } from './entity/message.entity.js';
 import './entity/associate-models.js';
@@ -71,6 +71,7 @@ export class ChatService {
                 senderRole: payload.senderRole,
                 messageType,
                 content: trimmedContent,
+                isRead: false,
             }, { transaction });
 
             if (mediaIds.length) {
@@ -115,6 +116,46 @@ export class ChatService {
         });
     }
 
+    static async markUserMessagesAsRead(userId: string): Promise<number> {
+        const chat = await this.getOrCreateUserChat(userId);
+        const [updated] = await MessageEntity.update({
+            isRead: true,
+        }, {
+            where: {
+                chatId: chat.id,
+                senderRole: Roles.USER,
+                isRead: false,
+            },
+        });
+
+        return updated;
+    }
+
+    static async markTrainerMessagesAsRead(userId: string): Promise<number> {
+        const chat = await this.getOrCreateUserChat(userId);
+        const [updated] = await MessageEntity.update({
+            isRead: true,
+        }, {
+            where: {
+                chatId: chat.id,
+                senderRole: { [Op.in]: [Roles.TRAINER, Roles.ADMIN] },
+                isRead: false,
+            },
+        });
+
+        return updated;
+    }
+
+    static async countUnreadUserMessages(userId: string): Promise<number> {
+        const chat = await this.getOrCreateUserChat(userId);
+        return countUnreadMessages(chat.id, [Roles.USER]);
+    }
+
+    static async countUnreadTrainerMessages(userId: string): Promise<number> {
+        const chat = await this.getOrCreateUserChat(userId);
+        return countUnreadMessages(chat.id, [Roles.TRAINER, Roles.ADMIN]);
+    }
+
     static async listUserChats(options: PaginationOptions = {}) {
         const { page = 1, limit = DEFAULT_PAGE_SIZE } = options;
 
@@ -134,12 +175,15 @@ export class ChatService {
 
         const { rows, count } = await ChatEntity.findAndCountAll(findOptions);
 
+        const unreadByChat = await getUnreadCountsForChats(rows.map((chat) => chat.id), [Roles.USER]);
+
         return {
             chats: rows,
             page,
             limit,
             total: count,
             totalPages: Math.ceil(count / limit) || 1,
+            unreadByChat,
         };
     }
 }
@@ -184,4 +228,41 @@ function buildMessagePreview(content: string, mediaIds: string[]): string {
     }
 
     return '';
+}
+
+async function countUnreadMessages(chatId: string, senderRoles: SenderRole[]): Promise<number> {
+    return MessageEntity.count({
+        where: {
+            chatId,
+            senderRole: { [Op.in]: senderRoles },
+            isRead: false,
+        },
+    });
+}
+
+async function getUnreadCountsForChats(chatIds: string[], senderRoles: SenderRole[]): Promise<Record<string, number>> {
+    if (!chatIds.length) {
+        return {};
+    }
+
+    const rows = await MessageEntity.findAll({
+        attributes: [
+            'chatId',
+            [fn('COUNT', '*'), 'unreadCount'],
+        ],
+        where: {
+            chatId: { [Op.in]: chatIds },
+            senderRole: { [Op.in]: senderRoles },
+            isRead: false,
+        },
+        group: ['chatId'],
+        raw: true,
+    });
+
+    return rows.reduce<Record<string, number>>((acc, row) => {
+        const chatId = (row as any).chatId as string;
+        const unreadCount = Number((row as any).unreadCount ?? 0) || 0;
+        acc[chatId] = unreadCount;
+        return acc;
+    }, {});
 }

@@ -139,7 +139,10 @@ export function initializeSocketServer(server: HTTPServer) {
                 io.to(getUserRoom(resolvedUserId)).emit(MESSAGE_EVENT, mapMessageForUser(resolvedUserId, message));
                 io.to(TRAINERS_ROOM).emit(MESSAGE_EVENT, mapMessageForTrainer(message));
 
-                callback?.({ status: 'ok' });
+                const ackMessage = role === Roles.USER
+                    ? mapMessageForUser(resolvedUserId, message)
+                    : mapMessageForTrainer(message);
+                callback?.({ status: 'ok', message: ackMessage });
             } catch (error) {
                 if (callback) {
                     callback({ status: 'error', message: (error as Error).message });
@@ -519,6 +522,7 @@ function mapMessageForUser(viewerId: string, message: MessageEntity) {
         createdAt: message.createdAt,
         senderType,
         isMine,
+        isRead: message.isRead,
     };
 }
 
@@ -532,6 +536,7 @@ function mapMessageForTrainer(message: MessageEntity) {
         content: message.content ?? '',
         media: formatMessageMedia(message),
         createdAt: message.createdAt,
+        isRead: message.isRead,
     };
 }
 
