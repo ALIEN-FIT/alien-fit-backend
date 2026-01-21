@@ -1,0 +1,53 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+yarn.lock
+
+# Build output (will be rebuilt in Docker)
+dist
+
+# Development files
+.git
+.gitignore
+.vscode
+.husky
+
+# Environment files (mounted or passed via env)
+.env
+.env.*
+!.env.example
+
+# Logs
+logs
+*.log
+
+# Documentation
+README.md
+docs
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea
+*.swp
+*.swo
+
+# Test files
+coverage
+*.test.js
+*.spec.js
+
+# Docker files (avoid recursive issues)
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Certificates (handle separately)
+.cert
+
+# Other
+*.md
+*.txt

@@ -31,6 +31,7 @@ import { notificationRouterV1 } from './modules/notification/v1/notification.rou
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { notFoundMiddleware } from './middleware/not-found.middleware.js';
 import { appRouterV1 } from './modules/app/v1/app.routes.js';
+import { healthRouter } from './modules/health/v1/health.routes.js';
 
 export function initializeApp(app: express.Application) {
     app.use(i18n.init);
@@ -45,13 +46,16 @@ export function initializeApp(app: express.Application) {
         hsts: false,
         // Either always set OAC, or set to false. Pick one and keep it consistent.
         originAgentCluster: true,
-        // Optional: keep COOP; it’ll only apply on HTTPS/localhost
+        // Optional: keep COOP; it'll only apply on HTTPS/localhost
         crossOriginOpenerPolicy: { policy: 'same-origin' },
     }));
 
     // app.use(sanitize()); // TODO: FIX IT____IT THROW ERROR WHEN IT SANITIZE REQUEST
 
     app.use(express.static('public'));
+
+    // Health check routes (before auth middleware)
+    app.use('/health', healthRouter);
 
     app.use('/', homeRouter);
     app.use('/api/constant', constantRouter);
