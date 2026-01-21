@@ -8,6 +8,12 @@
 
 <body>
     <h2>Caller</h2>
+    <div style="margin-bottom:8px;">
+        <input id="backendUrl" type="text" placeholder="Backend URL (e.g. https://back-dev.alien-fit.com)"
+            style="width:320px;" />
+        <input id="token" type="text" placeholder="Bearer <token>" style="width:320px; margin-left:8px;" />
+        <button id="connectBtn">Connect</button>
+    </div>
     <video id="localVideo" autoplay playsinline muted style="width:240px; border:1px solid #ccc;"></video>
     <video id="remoteVideo" autoplay playsinline style="width:240px; border:1px solid #ccc;"></video>
     <br />

@@ -1,23 +1,5 @@
-const ICE_SERVERS = [
-    { urls: "stun:back-dev.alien-fit.com:3478" },
-    {
-        urls: "turn:back-dev.alien-fit.com:3478?transport=udp",
-        username: "test",
-        credential: "testpass"
-    },
-    {
-        urls: "turn:back-dev.alien-fit.com:5349?transport=tcp",
-        username: "test",
-        credential: "testpass"
-    }
-];
-
-
-const socket = io({
-    auth: {
-        token: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiIwODY0YjE0NC02MmZmLTRiMDItOThkMy1mNTQ0NjdkOWZlNDkiLCJyb2xlIjoiYWRtaW4iLCJzZXNzaW9uSWQiOiIzMDFiZTEwNi0zM2MwLTQ2YjItODg2YS01MjBmMDI1ZjdkMjYiLCJpYXQiOjE3NjE0MTI5NTksImV4cCI6MTc2MTQ2Njk1OX0.oS5fHgdAAFCBcHY4zN3whqI1T8A4kcUG9qtoC108kho"
-    }
-}); // adjust backend URL if needed
+let ICE_SERVERS = [];
+let socket = null;
 
 let pc;
 let localStream;
@@ -28,9 +10,80 @@ const localVideo = document.getElementById("localVideo");
 const remoteVideo = document.getElementById("remoteVideo");
 const endBtn = document.getElementById("endCall");
 
-socket.on("connect", () => {
-    console.log("Callee connected:", socket.id);
-});
+// UI for dynamic backend URL and token
+const backendInput = document.getElementById("backendUrl");
+const tokenInput = document.getElementById("token");
+const connectBtn = document.getElementById("connectBtn");
+
+function setupSocketHandlers() {
+    if (!socket) return;
+
+    socket.on("connect", () => {
+        console.log("Callee connected:", socket.id);
+        connectBtn.disabled = true;
+        backendInput.disabled = true;
+        tokenInput.disabled = true;
+    });
+
+    socket.on("call:offer", async ({ offer, userId }) => {
+        console.log("Received offer from user:", userId);
+
+        if (pc) {
+            cleanupCall();
+        }
+
+        activeUserId = userId;
+
+        try {
+            pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            localVideo.srcObject = localStream;
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            pc.ontrack = event => {
+                if (event.streams && event.streams[0]) {
+                    remoteVideo.srcObject = event.streams[0];
+                }
+            };
+
+            pc.onicecandidate = event => {
+                if (event.candidate && activeUserId) {
+                    socket.emit("call:ice-candidate", { candidate: event.candidate, target: activeUserId });
+                }
+            };
+
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            await drainPendingCandidates();
+
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            socket.emit("call:answer", { answer, target: activeUserId });
+        } catch (error) {
+            console.error("Failed to handle incoming offer", error);
+            cleanupCall();
+        }
+    });
+
+    socket.on("call:ice-candidate", async ({ candidate, userId }) => {
+        if (!pc || (activeUserId && userId && userId !== activeUserId)) {
+            return;
+        }
+        await addOrQueueCandidate(candidate);
+    });
+
+    socket.on("call:end", ({ userId, reason }) => {
+        if (!activeUserId || (userId && userId !== activeUserId)) {
+            return;
+        }
+
+        console.log("Call ended by peer", reason ? `(${reason})` : "");
+        cleanupCall();
+    });
+
+    socket.on("disconnect", cleanupCall);
+}
 
 function cleanupCall() {
     if (pc) {
@@ -73,44 +126,7 @@ async function drainPendingCandidates() {
 }
 
 socket.on("call:offer", async ({ offer, userId }) => {
-    console.log("Received offer from user:", userId);
-
-    if (pc) {
-        cleanupCall();
-    }
-
-    activeUserId = userId;
-
-    try {
-        pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = localStream;
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-        pc.ontrack = event => {
-            if (event.streams && event.streams[0]) {
-                remoteVideo.srcObject = event.streams[0];
-            }
-        };
-
-        pc.onicecandidate = event => {
-            if (event.candidate && activeUserId) {
-                socket.emit("call:ice-candidate", { candidate: event.candidate, target: activeUserId });
-            }
-        };
-
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        await drainPendingCandidates();
-
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        socket.emit("call:answer", { answer, target: activeUserId });
-    } catch (error) {
-        console.error("Failed to handle incoming offer", error);
-        cleanupCall();
-    }
+    // moved to setupSocketHandlers when socket created
 });
 
 endBtn.onclick = () => {
@@ -121,19 +137,34 @@ endBtn.onclick = () => {
 };
 
 socket.on("call:ice-candidate", async ({ candidate, userId }) => {
-    if (!pc || (activeUserId && userId && userId !== activeUserId)) {
-        return;
-    }
-    await addOrQueueCandidate(candidate);
+    // handled in setupSocketHandlers when socket created
 });
 
-socket.on("call:end", ({ userId, reason }) => {
-    if (!activeUserId || (userId && userId !== activeUserId)) {
-        return;
+// Connect button creates socket and registers handlers
+connectBtn.onclick = () => {
+    const backend = (backendInput.value || window.location.origin).trim();
+    const token = (tokenInput.value || "").trim();
+
+    let origin;
+    try {
+        origin = new URL(backend).origin;
+    } catch (e) {
+        try {
+            origin = new URL(`https://${backend}`).origin;
+        } catch (err) {
+            console.error("Invalid backend URL");
+            return;
+        }
     }
 
-    console.log("Call ended by peer", reason ? `(${reason})` : "");
-    cleanupCall();
-});
+    const host = new URL(origin).hostname;
 
-socket.on("disconnect", cleanupCall);
+    ICE_SERVERS = [
+        { urls: `stun:${host}:3478` },
+        { urls: `turn:${host}:3478?transport=udp`, username: "test", credential: "testpass" },
+        { urls: `turn:${host}:5349?transport=tcp`, username: "test", credential: "testpass" }
+    ];
+
+    socket = io(origin, { auth: { token } });
+    setupSocketHandlers();
+};

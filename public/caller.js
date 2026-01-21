@@ -1,21 +1,5 @@
-const ICE_SERVERS = [
-    { urls: "stun:back-dev.alien-fit.com:3478" },
-    {
-        urls: "turn:back-dev.alien-fit.com:3478?transport=udp",
-        username: "test",
-        credential: "testpass"
-    },
-    {
-        urls: "turn:back-dev.alien-fit.com:5349?transport=tcp",
-        username: "test",
-        credential: "testpass"
-    }
-];
-
-
-const socket = io({
-    auth: { token: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI0YzI1ZTMxMy03ZGFmLTQxODctOTU2Yi1iMjVmZTQ1ODYwMTEiLCJyb2xlIjoidXNlciIsInNlc3Npb25JZCI6IjcxNzU0YWQ3LTNiNTgtNDBmZS04Y2IyLWExMzljNWI0NzQ4MyIsImlhdCI6MTc2MTQxMjkyNiwiZXhwIjoxNzYxNDY2OTI2fQ.mu0HmIAj-n0zFYZjbcZSGkdj6cRvHzYm38CXAZUZixg" }
-}); // adjust backend URL if needed
+let ICE_SERVERS = [];
+let socket = null;
 
 let pc;
 let localStream;
@@ -26,9 +10,47 @@ const remoteVideo = document.getElementById("remoteVideo");
 const startBtn = document.getElementById("startCall");
 const endBtn = document.getElementById("endCall");
 
-socket.on("connect", () => {
-    console.log("Caller connected:", socket.id);
-});
+// UI for dynamic backend URL and token
+const backendInput = document.getElementById("backendUrl");
+const tokenInput = document.getElementById("token");
+const connectBtn = document.getElementById("connectBtn");
+
+function setupSocketHandlers() {
+    if (!socket) return;
+
+    socket.on("connect", () => {
+        console.log("Caller connected:", socket.id);
+        connectBtn.disabled = true;
+        backendInput.disabled = true;
+        tokenInput.disabled = true;
+    });
+
+    socket.on("call:answer", async ({ answer }) => {
+        if (!pc) {
+            console.warn("No active peer connection to apply answer");
+            return;
+        }
+
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            await drainPendingCandidates();
+            console.log("Received answer from trainer");
+        } catch (error) {
+            console.error("Failed to apply remote answer", error);
+        }
+    });
+
+    socket.on("call:ice-candidate", async ({ candidate }) => {
+        await addOrQueueCandidate(candidate);
+    });
+
+    socket.on("call:end", () => {
+        console.log("Call ended by peer");
+        cleanupCall();
+    });
+
+    socket.on("disconnect", cleanupCall);
+}
 
 function cleanupCall() {
     if (pc) {
@@ -74,6 +96,10 @@ startBtn.onclick = async () => {
         console.warn("Call already active");
         return;
     }
+    if (!socket) {
+        console.warn("Socket not connected. Press Connect first.");
+        return;
+    }
 
     try {
         pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
@@ -110,27 +136,35 @@ endBtn.onclick = () => {
 };
 
 socket.on("call:answer", async ({ answer }) => {
-    if (!pc) {
-        console.warn("No active peer connection to apply answer");
-        return;
-    }
+    // handled in setupSocketHandlers when socket created
+});
 
+// Connect button creates socket and registers handlers
+connectBtn.onclick = () => {
+    const backend = (backendInput.value || window.location.origin).trim();
+    const token = (tokenInput.value || "").trim();
+
+    let origin;
     try {
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        await drainPendingCandidates();
-        console.log("Received answer from trainer");
-    } catch (error) {
-        console.error("Failed to apply remote answer", error);
+        origin = new URL(backend).origin;
+    } catch (e) {
+        // if user provided a hostname without protocol, assume https
+        try {
+            origin = new URL(`https://${backend}`).origin;
+        } catch (err) {
+            console.error("Invalid backend URL");
+            return;
+        }
     }
-});
 
-socket.on("call:ice-candidate", async ({ candidate }) => {
-    await addOrQueueCandidate(candidate);
-});
+    const host = new URL(origin).hostname;
 
-socket.on("call:end", () => {
-    console.log("Call ended by peer");
-    cleanupCall();
-});
+    ICE_SERVERS = [
+        { urls: `stun:${host}:3478` },
+        { urls: `turn:${host}:3478?transport=udp`, username: "test", credential: "testpass" },
+        { urls: `turn:${host}:5349?transport=tcp`, username: "test", credential: "testpass" }
+    ];
 
-socket.on("disconnect", cleanupCall);
+    socket = io(origin, { auth: { token } });
+    setupSocketHandlers();
+};
