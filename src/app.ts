@@ -30,6 +30,7 @@ import { notificationRouterV1 } from './modules/notification/v1/notification.rou
 
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { notFoundMiddleware } from './middleware/not-found.middleware.js';
+import { appRouterV1 } from './modules/app/v1/app.routes.js';
 
 export function initializeApp(app: express.Application) {
     app.use(i18n.init);
@@ -57,6 +58,7 @@ export function initializeApp(app: express.Application) {
     app.use('/api/v1/users', userRouterV1);
     app.use('/api/v1/auth', authRouterV1);
     app.use('/api/v1/user-session', userSessionRouterV1);
+    app.use('/api/v1/app', appRouterV1);
     app.use('/api/v1/media', mediaRouterV1);
     app.use('/api/v1/posts', postRouterV1);
     app.use('/api/v1/user-profile', userProfileRouterV1);
