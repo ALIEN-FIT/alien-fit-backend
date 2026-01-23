@@ -4,7 +4,7 @@ import { env } from '../config/env.js';
 import { HttpResponseError } from './appError.js';
 
 const BASE_URL = 'https://api.calorieninjas.com';
-const API_KEY = env.calorieninjas_api_key;
+const API_KEY = "env.calorieninjas_api_key";
 
 async function parseResponse(response: Response, fallbackStatus: number) {
     const raw = await response.text();
