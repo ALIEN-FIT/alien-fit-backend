@@ -2,6 +2,7 @@ import { Server as HTTPServer } from 'http';
 import type { IncomingMessage } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { authenticateAccessToken } from '../utils/auth.utils.js';
+import { env } from '../config/env.js';
 import { Roles } from '../constants/roles.js';
 import { ChatService } from '../modules/chat/v1/chat.service.js';
 import { PresenceService } from '../modules/chat/v1/presence.service.js';
@@ -21,6 +22,17 @@ const CALL_OFFER_EVENT = 'call:offer';
 const CALL_ANSWER_EVENT = 'call:answer';
 const CALL_ICE_CANDIDATE_EVENT = 'call:ice-candidate';
 const CALL_END_EVENT = 'call:end';
+
+const CALL_DEBUG = env.SOCKET_CALL_DEBUG;
+
+function logCallDebug(message: string, data?: Record<string, unknown>) {
+    if (!CALL_DEBUG) {
+        return;
+    }
+    const ts = new Date().toISOString();
+    // Keep payloads tight to avoid leaking sensitive data (e.g. auth) and to reduce log noise.
+    console.log(`[call][${ts}] ${message}`, data ?? '');
+}
 
 interface CallSession {
     userId: string;
@@ -101,11 +113,25 @@ export function initializeSocketServer(server: HTTPServer) {
         const { userId, role } = socket.data;
         registerConnection(userId);
 
+        logCallDebug('socket connected', {
+            socketId: socket.id,
+            userId,
+            role,
+        });
+
         if (role === Roles.USER) {
             socket.join(getUserRoom(userId));
         } else if (role === Roles.TRAINER || role === Roles.ADMIN) {
             socket.join(TRAINERS_ROOM);
         }
+
+        logCallDebug('socket joined rooms', {
+            socketId: socket.id,
+            userId,
+            role,
+            userRoom: role === Roles.USER ? getUserRoom(userId) : undefined,
+            trainersRoom: role === Roles.TRAINER || role === Roles.ADMIN ? TRAINERS_ROOM : undefined,
+        });
 
         await PresenceService.heartbeat(userId);
 
@@ -155,6 +181,14 @@ export function initializeSocketServer(server: HTTPServer) {
         // an incoming WebRTC call. All offers/answers/ICE are funneled through Socket.IO.
         socket.on(CALL_OFFER_EVENT, async (payload, callback) => {
             try {
+                logCallDebug(CALL_OFFER_EVENT + ' received', {
+                    socketId: socket.id,
+                    userId,
+                    role,
+                    hasOffer: Boolean((payload as { offer?: unknown })?.offer),
+                    activeCallSessions: activeCallSessions.size,
+                });
+
                 if (role !== Roles.USER) {
                     throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only users can start calls');
                 }
@@ -202,19 +236,39 @@ export function initializeSocketServer(server: HTTPServer) {
                     },
                 });
 
+                logCallDebug(CALL_OFFER_EVENT + ' forwarded', {
+                    fromUserId: userId,
+                    to: TRAINERS_ROOM,
+                });
+
                 callback?.({ status: 'ok' });
             } catch (error) {
+                logCallDebug(CALL_OFFER_EVENT + ' error', {
+                    socketId: socket.id,
+                    userId,
+                    role,
+                    message: (error as Error).message,
+                });
                 callback?.({ status: 'error', message: (error as Error).message });
             }
         });
 
         socket.on(CALL_ANSWER_EVENT, async (payload, callback) => {
             try {
+                const { userId: payloadUserId, target, answer } = payload as { userId?: string; target?: string; answer?: unknown };
+                logCallDebug(CALL_ANSWER_EVENT + ' received', {
+                    socketId: socket.id,
+                    userId,
+                    role,
+                    payloadUserId,
+                    target,
+                    activeCallSessions: activeCallSessions.size,
+                });
+
                 if (![Roles.TRAINER, Roles.ADMIN].includes(role)) {
                     throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only trainers or admins can answer calls');
                 }
 
-                const { userId: payloadUserId, target, answer } = payload as { userId?: string; target?: string; answer?: unknown };
                 const normalizedTarget = typeof target === 'string' ? target.trim() : undefined;
                 const targetUserId = payloadUserId ?? (normalizedTarget && normalizedTarget !== TRAINERS_ROOM ? normalizedTarget : undefined);
 
@@ -258,8 +312,20 @@ export function initializeSocketServer(server: HTTPServer) {
                     userId: targetUserId,
                 });
 
+                logCallDebug(CALL_ANSWER_EVENT + ' forwarded', {
+                    fromTrainerId: userId,
+                    toUserId: targetUserId,
+                    userRoom: getUserRoom(targetUserId),
+                });
+
                 callback?.({ status: 'ok' });
             } catch (error) {
+                logCallDebug(CALL_ANSWER_EVENT + ' error', {
+                    socketId: socket.id,
+                    userId,
+                    role,
+                    message: (error as Error).message,
+                });
                 callback?.({ status: 'error', message: (error as Error).message });
             }
         });
@@ -267,6 +333,15 @@ export function initializeSocketServer(server: HTTPServer) {
         socket.on(CALL_ICE_CANDIDATE_EVENT, (payload, callback) => {
             try {
                 const { candidate, userId: payloadUserId, target } = payload as { candidate?: unknown; userId?: string; target?: string };
+
+                logCallDebug(CALL_ICE_CANDIDATE_EVENT + ' received', {
+                    socketId: socket.id,
+                    userId,
+                    role,
+                    payloadUserId,
+                    target,
+                    hasCandidate: Boolean(candidate),
+                });
                 if (!candidate) {
                     throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'ICE candidate is required');
                 }
@@ -282,10 +357,20 @@ export function initializeSocketServer(server: HTTPServer) {
                             userId,
                             candidate,
                         });
+
+                        logCallDebug(CALL_ICE_CANDIDATE_EVENT + ' forwarded', {
+                            fromUserId: userId,
+                            toTrainerSocketId: session.trainerSocketId,
+                        });
                     } else {
                         io.to(TRAINERS_ROOM).emit(CALL_ICE_CANDIDATE_EVENT, {
                             userId,
                             candidate,
+                        });
+
+                        logCallDebug(CALL_ICE_CANDIDATE_EVENT + ' forwarded', {
+                            fromUserId: userId,
+                            to: TRAINERS_ROOM,
                         });
                     }
                 } else if ([Roles.TRAINER, Roles.ADMIN].includes(role)) {
@@ -302,12 +387,24 @@ export function initializeSocketServer(server: HTTPServer) {
                     io.to(getUserRoom(targetUserId)).emit(CALL_ICE_CANDIDATE_EVENT, {
                         candidate,
                     });
+
+                    logCallDebug(CALL_ICE_CANDIDATE_EVENT + ' forwarded', {
+                        fromTrainerId: userId,
+                        toUserId: targetUserId,
+                        userRoom: getUserRoom(targetUserId),
+                    });
                 } else {
                     throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Unsupported role for ICE exchange');
                 }
 
                 callback?.({ status: 'ok' });
             } catch (error) {
+                logCallDebug(CALL_ICE_CANDIDATE_EVENT + ' error', {
+                    socketId: socket.id,
+                    userId,
+                    role,
+                    message: (error as Error).message,
+                });
                 callback?.({ status: 'error', message: (error as Error).message });
             }
         });
@@ -315,6 +412,16 @@ export function initializeSocketServer(server: HTTPServer) {
         socket.on(CALL_END_EVENT, async (payload, callback) => {
             try {
                 const { reason, status, userId: payloadUserId, target } = payload as { reason?: string; status?: string; userId?: string; target?: string };
+
+                logCallDebug(CALL_END_EVENT + ' received', {
+                    socketId: socket.id,
+                    userId,
+                    role,
+                    payloadUserId,
+                    target,
+                    reason,
+                    status,
+                });
                 const normalizedTarget = typeof target === 'string' ? target.trim() : undefined;
                 const targetUserId = payloadUserId ?? (normalizedTarget && normalizedTarget !== TRAINERS_ROOM ? normalizedTarget : undefined);
                 const resolvedReason = reason ?? status;
@@ -326,6 +433,12 @@ export function initializeSocketServer(server: HTTPServer) {
                         endedBy: 'user',
                         reason: resolvedReason,
                         refreshPresence: true,
+                    });
+
+                    logCallDebug(CALL_END_EVENT + ' finalized (user)', {
+                        userId,
+                        ended,
+                        reason: resolvedReason,
                     });
 
                     callback?.({ status: ended ? 'ok' : 'noop' });
@@ -347,17 +460,36 @@ export function initializeSocketServer(server: HTTPServer) {
                         refreshPresence: true,
                     });
 
+                    logCallDebug(CALL_END_EVENT + ' finalized (trainer)', {
+                        trainerId: userId,
+                        userId: targetUserId,
+                        ended,
+                        reason: resolvedReason,
+                    });
+
                     callback?.({ status: ended ? 'ok' : 'noop' });
                 } else {
                     throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Unsupported role for ending calls');
                 }
             } catch (error) {
+                logCallDebug(CALL_END_EVENT + ' error', {
+                    socketId: socket.id,
+                    userId,
+                    role,
+                    message: (error as Error).message,
+                });
                 callback?.({ status: 'error', message: (error as Error).message });
             }
         });
 
         socket.on('disconnect', async () => {
             stopHeartbeatLoop(socket.id);
+
+            logCallDebug('socket disconnected', {
+                socketId: socket.id,
+                userId,
+                role,
+            });
             if (deregisterConnection(userId)) {
                 await PresenceService.markOffline(userId);
             }

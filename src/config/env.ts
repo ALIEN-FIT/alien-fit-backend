@@ -48,6 +48,9 @@ const envSchema = z.object({
     CLOUDFLARE_ACCESS_KEY_ID: z.string().min(1, 'CLOUDFLARE_ACCESS_KEY_ID must not be empty'),
     HTTPS: z.boolean().default(false),
 
+    // Debug flags
+    SOCKET_CALL_DEBUG: z.coerce.boolean().default(true),
+
     // Fawaterak payment integration (optional until enabled)
     FAWATERAK_API_KEY: z.string().optional(),
     FAWATERAK_BASE_URL: z.string().url().optional(),
