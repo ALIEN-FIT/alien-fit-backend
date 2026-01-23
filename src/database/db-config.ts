@@ -26,8 +26,9 @@ if (!isTestEnv) {
 export async function initializeDatabase() {
     try {
         await sequelize.authenticate();
-        infoLogger.info(`DB Connected to ${DB_URL}`);
+        console.log(`DB Connected to ${DB_URL}`);
     } catch (error) {
+        console.error('DB Connection Error:', error);
         errorLogger.error('DB Connection Error:', error);
     }
 }
