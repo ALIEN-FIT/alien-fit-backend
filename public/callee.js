@@ -1,6 +1,8 @@
 let ICE_SERVERS = [];
 let socket = null;
 
+let heartbeatIntervalId = null;
+
 let pc;
 let localStream;
 let activeUserId;
@@ -15,6 +17,22 @@ const backendInput = document.getElementById("backendUrl");
 const tokenInput = document.getElementById("token");
 const connectBtn = document.getElementById("connectBtn");
 
+function startHeartbeat() {
+    stopHeartbeat();
+    heartbeatIntervalId = setInterval(() => {
+        if (socket && socket.connected) {
+            socket.emit("heartbeat");
+        }
+    }, 5000);
+}
+
+function stopHeartbeat() {
+    if (heartbeatIntervalId) {
+        clearInterval(heartbeatIntervalId);
+        heartbeatIntervalId = null;
+    }
+}
+
 function setupSocketHandlers() {
     if (!socket) return;
 
@@ -23,6 +41,14 @@ function setupSocketHandlers() {
         connectBtn.disabled = true;
         backendInput.disabled = true;
         tokenInput.disabled = true;
+        startHeartbeat();
+    });
+
+    // Server sends heartbeat pings; respond to keep the connection alive.
+    socket.on("heartbeat", () => {
+        if (socket && socket.connected) {
+            socket.emit("heartbeat");
+        }
     });
 
     socket.on("call:offer", async ({ offer, userId }) => {
@@ -82,7 +108,10 @@ function setupSocketHandlers() {
         cleanupCall();
     });
 
-    socket.on("disconnect", cleanupCall);
+    socket.on("disconnect", () => {
+        stopHeartbeat();
+        cleanupCall();
+    });
 }
 
 function cleanupCall() {
