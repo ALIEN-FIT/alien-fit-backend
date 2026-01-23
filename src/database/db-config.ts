@@ -20,7 +20,7 @@ export const sequelize = isTestEnv
     : new Sequelize(DB_URL, baseOptions);
 
 if (!isTestEnv) {
-    sequelize.sync({ alter: true });
+    sequelize.sync({ alter: false });
 }
 
 export async function initializeDatabase() {
