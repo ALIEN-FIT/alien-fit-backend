@@ -124,11 +124,6 @@ async function drainPendingCandidates() {
     }
     pendingRemoteCandidates = [];
 }
-
-socket.on("call:offer", async ({ offer, userId }) => {
-    // moved to setupSocketHandlers when socket created
-});
-
 endBtn.onclick = () => {
     if (activeUserId) {
         socket.emit("call:end", { target: activeUserId, status: "ended" });
@@ -136,9 +131,6 @@ endBtn.onclick = () => {
     cleanupCall();
 };
 
-socket.on("call:ice-candidate", async ({ candidate, userId }) => {
-    // handled in setupSocketHandlers when socket created
-});
 
 // Connect button creates socket and registers handlers
 connectBtn.onclick = () => {

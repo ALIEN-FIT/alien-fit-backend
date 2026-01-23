@@ -135,10 +135,6 @@ endBtn.onclick = () => {
     cleanupCall();
 };
 
-socket.on("call:answer", async ({ answer }) => {
-    // handled in setupSocketHandlers when socket created
-});
-
 // Connect button creates socket and registers handlers
 connectBtn.onclick = () => {
     const backend = (backendInput.value || window.location.origin).trim();
