@@ -8,7 +8,7 @@ services:
       NODE_ENV: production
       PORT: 3000
     ports:
-      - "${PROD_PORT:-3000}:3000"
+      - "${PROD_PORT:-3001}:3000"
 
   coturn-prod:
     image: instrumentisto/coturn:latest
