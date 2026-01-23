@@ -1,0 +1,19 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    ports:
+      - "${PROD_PORT:-3000}:3000"
+
+  coturn-prod:
+    image: instrumentisto/coturn:latest
+    container_name: coturn-prod
+    network_mode: host
+    volumes:
+      - ./coturn/prod/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    restart: unless-stopped

@@ -1,10 +1,6 @@
 services:
-  # ===========================================
-  # PostgreSQL Database
-  # ===========================================
   db:
     image: postgres:16-alpine
-    container_name: alien-fit-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -12,7 +8,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-alien-fit}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    # No external ports - only accessible within Docker network
     expose:
       - "5432"
     healthcheck:
@@ -23,14 +18,9 @@ services:
     networks:
       - alien-fit-network
 
-  # ===========================================
-  # Redis Cache & Queue
-  # ===========================================
   redis:
     image: redis:7-alpine
-    container_name: alien-fit-redis
     restart: unless-stopped
-    # No external ports - only accessible within Docker network
     expose:
       - "6379"
     volumes:
@@ -43,25 +33,13 @@ services:
     networks:
       - alien-fit-network
 
-  # ===========================================
-  # Backend Application
-  # ===========================================
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: alien-fit-app
     restart: unless-stopped
     env_file:
-      - .env
+      - ${ENV_FILE:-.env}
     environment:
-      # Override DB_URI to use internal Docker network
       DB_URI: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-123456}@db:5432/${POSTGRES_DB:-alien-fit}
-      # Redis connection for Docker (app uses REDIS_URL)
-      REDIS_URL: redis://redis:6379/0
-      NODE_ENV: ${NODE_ENV:-production}
-    ports:
-      - "${PORT:-3000}:3000"
+      REDIS_URL: redis://redis:6379/${REDIS_DB:-0}
     depends_on:
       db:
         condition: service_healthy
@@ -73,34 +51,10 @@ services:
     networks:
       - alien-fit-network
 
-  # ===========================================
-  # TURN Server (Coturn)
-  # ===========================================
-  coturn:
-    image: instrumentisto/coturn:latest
-    container_name: coturn
-    volumes:
-      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
-    ports:
-      - "3478:3478/tcp"
-      - "3478:3478/udp"
-      - "5349:5349/tcp"
-    restart: unless-stopped
-    networks:
-      - alien-fit-network
-
-# ===========================================
-# Volumes
-# ===========================================
 volumes:
   postgres_data:
-    driver: local
   redis_data:
-    driver: local
 
-# ===========================================
-# Networks
-# ===========================================
 networks:
   alien-fit-network:
     driver: bridge

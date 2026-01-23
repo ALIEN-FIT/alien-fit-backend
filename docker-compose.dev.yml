@@ -1,0 +1,25 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+    command: npm run start:dev
+    ports:
+      - "${DEV_PORT:-3001}:3000"
+    volumes:
+      - ./:/app
+      - /app/node_modules
+      - ./public:/app/public
+      - ./logs:/app/logs
+
+  coturn-dev:
+    image: instrumentisto/coturn:latest
+    container_name: coturn-dev
+    network_mode: host
+    volumes:
+      - ./coturn/dev/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    restart: unless-stopped
