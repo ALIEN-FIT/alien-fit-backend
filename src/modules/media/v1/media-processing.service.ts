@@ -6,7 +6,6 @@ import { StorageFactory } from '../../../storage/storage-factory.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import sharp from 'sharp';
-import type { Express } from 'express';
 
 const ffmpegBinaryPath = ffmpegInstaller?.path;
 if (ffmpegBinaryPath) {
@@ -56,7 +55,7 @@ export class MediaService {
         const key = `${Date.now()}-${file.originalname}`;
 
         // Upload main file
-        await this.storageService.uploadFile(processedFile.buffer, key, file.mimetype);
+        await this.storageService.uploadFile(processedFile.buffer, key);
         const url = this.storageService.getPublicUrl(key);
 
         let thumbnails = {} as Record<string, string>;
@@ -108,7 +107,7 @@ export class MediaService {
                     .jpeg({ quality: 80 })
                     .toBuffer();
 
-                await this.storageService.uploadFile(buffer, key, 'image/jpeg');
+                await this.storageService.uploadFile(buffer, key);
                 thumbnails[size] = this.storageService.getPublicUrl(key);
             })
         );
