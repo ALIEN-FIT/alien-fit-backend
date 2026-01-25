@@ -215,6 +215,7 @@ function mapChatUser(user: unknown) {
         id: typedUser.id,
         name: typedUser.name,
         provider: typedUser.provider,
+        imageId: typedUser.imageId,
     };
 }
 
