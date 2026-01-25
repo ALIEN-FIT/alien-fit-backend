@@ -15,7 +15,7 @@ const MediaTypes = {
 
 const SUPPORTED_MIME_TYPES = {
     [MediaTypes.IMAGE]: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence'],
-    [MediaTypes.VIDEO]: ['video/mp4', 'video/quicktime'],
+    [MediaTypes.VIDEO]: ['video/mp4', 'video/quicktime', 'video/x-matroska', 'video/webm', 'video/avi', 'video/mpeg', 'video/3gpp', 'video/mov'],
     [MediaTypes.DOCUMENT]: ['application/pdf'],
     [MediaTypes.AUDIO]: ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp4'],
 };
