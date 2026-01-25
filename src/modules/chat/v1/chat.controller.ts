@@ -7,6 +7,7 @@ import { MessageEntity, SenderRole } from './entity/message.entity.js';
 import { HttpResponseError } from '../../../utils/appError.js';
 import { UserService } from '../../user/v1/user.service.js';
 import { UserEntity } from '../../user/v1/entity/user.entity.js';
+import { is } from 'zod/locales';
 
 export async function getMyChatController(req: Request, res: Response): Promise<void> {
     const userId = req.user!.id.toString();
@@ -216,6 +217,8 @@ function mapChatUser(user: unknown) {
         name: typedUser.name,
         provider: typedUser.provider,
         imageId: typedUser.imageId,
+        isOnline: typedUser.isOnline,
+        lastSeen: typedUser.lastSeen,
     };
 }
 

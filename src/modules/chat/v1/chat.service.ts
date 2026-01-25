@@ -169,7 +169,7 @@ export class ChatService {
             include: [{
                 model: UserEntity,
                 as: 'user',
-                attributes: ['id', 'name', 'provider', 'role'],
+                attributes: ['id', 'name', 'provider', 'role', 'imageId', 'isOnline', 'lastSeen'],
             }],
         };
 

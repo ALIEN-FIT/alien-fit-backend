@@ -5,6 +5,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# ffmpeg is required for thumbnail extraction
+RUN apk add --no-cache ffmpeg
+
 # Install deps
 COPY package*.json ./
 RUN npm ci
@@ -24,7 +27,7 @@ FROM node:20-alpine AS production
 WORKDIR /app
 
 # Needed for healthcheck
-RUN apk add --no-cache wget
+RUN apk add --no-cache wget ffmpeg
 
 COPY package*.json ./
 RUN npm ci --only=production

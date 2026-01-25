@@ -1,10 +1,17 @@
+import { PassThrough } from 'stream';
 import { MediaEntity } from './model/media.model.js';
 import { HttpResponseError } from '../../../utils/appError.js';
 import { StatusCodes } from 'http-status-codes';
 import { StorageFactory } from '../../../storage/storage-factory.js';
+import ffmpeg from 'fluent-ffmpeg';
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import sharp from 'sharp';
 import type { Express } from 'express';
 
+const ffmpegBinaryPath = ffmpegInstaller?.path;
+if (ffmpegBinaryPath) {
+    ffmpeg.setFfmpegPath(ffmpegBinaryPath);
+}
 
 const MediaTypes = {
     IMAGE: 'image',
@@ -18,6 +25,18 @@ const SUPPORTED_MIME_TYPES = {
     [MediaTypes.VIDEO]: ['video/mp4', 'video/quicktime', 'video/x-matroska', 'video/webm', 'video/avi', 'video/mpeg', 'video/3gpp', 'video/mov'],
     [MediaTypes.DOCUMENT]: ['application/pdf'],
     [MediaTypes.AUDIO]: ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp4'],
+};
+
+const VIDEO_INPUT_FORMATS: Record<string, string> = {
+    'video/mp4': 'mp4',
+    'video/quicktime': 'mov',
+    'video/mov': 'mov',
+    'video/x-matroska': 'matroska',
+    'video/webm': 'webm',
+    'video/avi': 'avi',
+    'video/mpeg': 'mpeg',
+    'video/3gpp': '3gp',
+    'video/ogg': 'ogg',
 };
 
 export class MediaService {
@@ -63,19 +82,28 @@ export class MediaService {
         return Promise.all(files.map((file) => this.processAndUpload(file)));
     }
 
-    static async generateThumbnails(file, baseKey) {
+    static async generateThumbnails(file: Express.Multer.File, baseKey: string) {
         const sizes = {
             small: 320,
             medium: 640,
             large: 1200
         };
 
-        const thumbnails = {};
+        const thumbnails: Record<string, string> = {};
+
+        let frameBuffer: Buffer;
+
+        try {
+            frameBuffer = await this.extractVideoFrame(file);
+        } catch (error) {
+            console.error('Failed to capture thumbnail frame for', file.originalname, error);
+            return thumbnails;
+        }
 
         await Promise.all(
             Object.entries(sizes).map(async ([size, width]) => {
                 const key = `thumbnails/${size}/${baseKey}`;
-                const buffer = await sharp(file.buffer)
+                const buffer = await sharp(frameBuffer)
                     .resize(width)
                     .jpeg({ quality: 80 })
                     .toBuffer();
@@ -86,6 +114,42 @@ export class MediaService {
         );
 
         return thumbnails;
+    }
+
+    static async extractVideoFrame(file: Express.Multer.File): Promise<Buffer> {
+        if (!file.buffer?.length) {
+            throw new Error('Video buffer is empty');
+        }
+
+        return new Promise<Buffer>((resolve, reject) => {
+            const inputStream = new PassThrough();
+            inputStream.end(file.buffer);
+
+            const command = ffmpeg(inputStream);
+            const videoFormat = this.getVideoInputFormat(file.mimetype);
+            if (videoFormat) {
+                command.inputFormat(videoFormat);
+            }
+
+            const chunks: Buffer[] = [];
+            const outputStream = new PassThrough();
+
+            outputStream.on('data', (chunk) => chunks.push(chunk));
+            outputStream.on('end', () => {
+                if (!chunks.length) {
+                    return reject(new Error('Failed to capture a video frame'));
+                }
+
+                resolve(Buffer.concat(chunks));
+            });
+            outputStream.on('error', reject);
+
+            command
+                .frames(1)
+                .outputFormat('png')
+                .on('error', reject)
+                .pipe(outputStream, { end: true });
+        });
     }
 
     static async getMedia(id) {
@@ -113,6 +177,19 @@ export class MediaService {
             createdAt: media.createdAt,
             thumbnails: media.thumbnails
         };
+    }
+
+    static getVideoInputFormat(mimetype?: string) {
+        if (typeof mimetype !== 'string') {
+            return undefined;
+        }
+
+        const normalized = mimetype.split(';')[0]?.toLowerCase().trim();
+        if (!normalized) {
+            return undefined;
+        }
+
+        return VIDEO_INPUT_FORMATS[normalized];
     }
 
     static getMediaType(mimetype) {
