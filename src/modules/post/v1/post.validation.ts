@@ -8,13 +8,13 @@ export const paginationQuerySchema = Joi.object({
 });
 
 export const createPostSchema = Joi.object({
-    text: Joi.string().min(1).max(5000),
+    text: Joi.string().trim().allow('', null).max(5000).default(''),
     mediaIds: Joi.array().items(uuidSchema).max(10),
 });
 
 export const updatePostSchema = Joi.object({
     postId: uuidSchema.required(),
-    text: Joi.string().allow('', null).max(5000),
+    text: Joi.string().trim().allow('', null).max(5000).default(''),
     mediaIds: Joi.array().items(uuidSchema).max(10),
 });
 
@@ -79,7 +79,7 @@ export const commentIdParamSchema = Joi.object({
 
 export const updateCommentSchema = Joi.object({
     commentId: uuidSchema.required(),
-    content: Joi.string().trim().allow('', null).max(2000),
+    content: Joi.string().trim().allow('', null).max(2000).default(''),
     mediaIds: Joi.array().items(uuidSchema).max(10),
 });
 
