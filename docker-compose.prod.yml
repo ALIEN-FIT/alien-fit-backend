@@ -9,11 +9,3 @@ services:
       PORT: 3000
     ports:
       - "${PROD_PORT:-3001}:3000"
-
-  coturn-prod:
-    image: instrumentisto/coturn:latest
-    container_name: coturn-prod
-    network_mode: host
-    volumes:
-      - ./coturn/prod/turnserver.conf:/etc/coturn/turnserver.conf:ro
-    restart: unless-stopped
