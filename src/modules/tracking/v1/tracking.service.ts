@@ -198,19 +198,25 @@ export class TrackingService {
     }
 
     static async logWaterIntake(user: UserEntity, payload: WaterPayload): Promise<DailyTrackingEntity> {
-        if (payload.amountMl <= 0) {
-            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Water amount must be positive');
+        if (payload.amountMl === 0) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Water amount cannot be zero');
         }
         const date = toDateOnly(payload.date);
         const tracking = await TrackingRepository.findOrCreate(user.id, date);
-        const waterIntakeMl = (tracking.waterIntakeMl ?? 0) + payload.amountMl;
+        const currentWaterIntake = tracking.waterIntakeMl ?? 0;
+        const newWaterIntakeMl = currentWaterIntake + payload.amountMl;
+
+        if (newWaterIntakeMl < 0) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Water intake cannot be negative. Current intake: ' + currentWaterIntake + 'ml');
+        }
+
         const waterIntakeRecords = tracking.waterIntakeRecords ?? [];
         const record: WaterIntakeRecord = {
             intakeMl: payload.amountMl,
             time: new Date().toISOString(),
         };
         waterIntakeRecords.push(record);
-        await tracking.update({ waterIntakeMl, waterIntakeRecords });
+        await tracking.update({ waterIntakeMl: newWaterIntakeMl, waterIntakeRecords });
         return tracking;
     }
 

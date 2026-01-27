@@ -27,7 +27,11 @@ export const extraFoodSchema = Joi.object({
 
 export const waterIntakeSchema = Joi.object({
     date: isoDate.required(),
-    amountMl: Joi.number().integer().positive().required(),
+    amountMl: Joi.number().integer().required().messages({
+        'number.base': 'Water amount must be a number',
+        'number.integer': 'Water amount must be an integer',
+        'any.required': 'Water amount is required',
+    }),
 });
 
 export const dailyStatusParamsSchema = Joi.object({
