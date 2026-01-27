@@ -94,7 +94,7 @@ export async function getMessagesForUserController(req: Request, res: Response):
     const targetUserId = req.params.userId;
     const { page = 1, limit = 50 } = req.query;
 
-    await UserService.getUserById(targetUserId);
+    const user = await UserService.getUserById(targetUserId);
 
     const messages = await ChatService.getMessagesForUser(targetUserId, {
         page: 1,
@@ -103,7 +103,10 @@ export async function getMessagesForUserController(req: Request, res: Response):
 
     res.status(StatusCodes.OK).json({
         status: 'success',
-        data: messages.map((message) => mapMessageForTrainerViewer(message)),
+        data: {
+            user,
+            messages: messages.map((message) => mapMessageForTrainerViewer(message))
+        },
     });
 }
 
