@@ -27,6 +27,7 @@ import { trainingVideoRouterV1 } from './modules/training-video/v1/training-vide
 import { nutritionRouterV1 } from './modules/nutrition/v1/nutrition.routes.js';
 import { feedbackRouterV1 } from './modules/feedback/v1/feedback.routes.js';
 import { notificationRouterV1 } from './modules/notification/v1/notification.routes.js';
+import { adsRouterV1 } from './modules/ads/v1/ads.routes.js';
 
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { notFoundMiddleware } from './middleware/not-found.middleware.js';
@@ -79,6 +80,7 @@ export function initializeApp(app: express.Application) {
     app.use('/api/v1/nutrition', nutritionRouterV1);
     app.use('/api/v1/feedback', feedbackRouterV1);
     app.use('/api/v1/notifications', notificationRouterV1);
+    app.use('/api/v1/ads', adsRouterV1);
 
     app.use(notFoundMiddleware);
     app.use(errorMiddleware);
