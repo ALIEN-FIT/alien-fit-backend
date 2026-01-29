@@ -54,6 +54,7 @@ const envSchema = z.object({
     // Fawaterak payment integration (optional until enabled)
     FAWATERAK_API_KEY: z.string().optional(),
     FAWATERAK_BASE_URL: z.string().url().optional(),
+    calorieninjas_api_key: z.string().min(1, 'calorieninjas_api_key must not be empty'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
