@@ -10,7 +10,10 @@ let pendingRemoteCandidates = [];
 
 const localVideo = document.getElementById("localVideo");
 const remoteVideo = document.getElementById("remoteVideo");
+const startBtn = document.getElementById("startCall");
 const endBtn = document.getElementById("endCall");
+const targetUserIdInput = document.getElementById("targetUserId");
+const audioOnlyCheckbox = document.getElementById("audioOnly");
 
 // UI for dynamic backend URL and token
 const backendInput = document.getElementById("backendUrl");
@@ -92,6 +95,25 @@ function setupSocketHandlers() {
         }
     });
 
+    socket.on("call:answer", async ({ answer, userId }) => {
+        if (!pc) {
+            console.warn("No active peer connection to apply answer");
+            return;
+        }
+
+        if (activeUserId && userId && userId !== activeUserId) {
+            return;
+        }
+
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            await drainPendingCandidates();
+            console.log("Received answer from user");
+        } catch (error) {
+            console.error("Failed to apply remote answer", error);
+        }
+    });
+
     socket.on("call:ice-candidate", async ({ candidate, userId }) => {
         if (!pc || (activeUserId && userId && userId !== activeUserId)) {
             return;
@@ -158,6 +180,52 @@ endBtn.onclick = () => {
         socket.emit("call:end", { target: activeUserId, status: "ended" });
     }
     cleanupCall();
+};
+
+startBtn.onclick = async () => {
+    if (!socket || !socket.connected) {
+        console.warn("Socket not connected. Press Connect first.");
+        return;
+    }
+    const targetUserId = (targetUserIdInput?.value || "").trim();
+    if (!targetUserId) {
+        console.warn("Target user ID is required to start a call");
+        return;
+    }
+    if (pc) {
+        console.warn("Call already active");
+        return;
+    }
+
+    try {
+        activeUserId = targetUserId;
+        pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+        const audioOnly = audioOnlyCheckbox?.checked ?? false;
+        localStream = await navigator.mediaDevices.getUserMedia({ video: !audioOnly, audio: true });
+        localVideo.srcObject = localStream;
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+        pc.ontrack = event => {
+            if (event.streams && event.streams[0]) {
+                remoteVideo.srcObject = event.streams[0];
+            }
+        };
+
+        pc.onicecandidate = event => {
+            if (event.candidate && activeUserId) {
+                socket.emit("call:ice-candidate", { candidate: event.candidate, target: activeUserId });
+            }
+        };
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        socket.emit("call:offer", { offer, userId: activeUserId });
+    } catch (error) {
+        console.error("Failed to start call", error);
+        cleanupCall();
+    }
 };
 
 
