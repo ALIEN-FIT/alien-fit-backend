@@ -38,6 +38,7 @@ interface CallSession {
     userId: string;
     initiatorId: string;
     initiatorSocketId: string;
+    initiatorRole: SenderRole;
     startedAt: Date;
     status: 'ringing' | 'active';
     trainerId?: string;
@@ -189,57 +190,116 @@ export function initializeSocketServer(server: HTTPServer) {
                     activeCallSessions: activeCallSessions.size,
                 });
 
-                if (role !== Roles.USER) {
-                    throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only users can start calls');
-                }
-
-                const { offer } = payload as { offer?: unknown };
+                const { offer, userId: payloadUserId, target } = payload as { offer?: unknown; userId?: string; target?: string };
                 if (!offer) {
                     throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'WebRTC SDP offer is required');
                 }
 
-                if (activeCallSessions.has(userId)) {
-                    throw new HttpResponseError(StatusCodes.CONFLICT, 'A call is already in progress for this user');
-                }
+                const normalizedTarget = typeof target === 'string' ? target.trim() : undefined;
+                const targetUserId = payloadUserId ?? (normalizedTarget && normalizedTarget !== TRAINERS_ROOM ? normalizedTarget : undefined);
 
-                const caller = await UserService.getUserById(userId);
+                if (role === Roles.USER) {
+                    if (activeCallSessions.has(userId)) {
+                        throw new HttpResponseError(StatusCodes.CONFLICT, 'A call is already in progress for this user');
+                    }
 
-                activeCallSessions.set(userId, {
-                    userId,
-                    initiatorId: userId,
-                    initiatorSocketId: socket.id,
-                    startedAt: new Date(),
-                    status: 'ringing',
-                });
+                    const caller = await UserService.getUserById(userId);
 
-                await recordCallHistoryMessage({
-                    userId,
-                    senderId: userId,
-                    senderRole: Roles.USER as SenderRole,
-                    status: 'started',
-                    metadata: {
-                        direction: 'outgoing',
+                    activeCallSessions.set(userId, {
+                        userId,
                         initiatorId: userId,
-                    },
-                });
+                        initiatorSocketId: socket.id,
+                        initiatorRole: Roles.USER as SenderRole,
+                        startedAt: new Date(),
+                        status: 'ringing',
+                    });
 
-                await PresenceService.heartbeat(userId);
+                    await recordCallHistoryMessage({
+                        userId,
+                        senderId: userId,
+                        senderRole: Roles.USER as SenderRole,
+                        status: 'started',
+                        metadata: {
+                            direction: 'outgoing',
+                            initiatorId: userId,
+                            initiatorRole: Roles.USER,
+                        },
+                    });
 
-                io.to(TRAINERS_ROOM).emit(CALL_OFFER_EVENT, {
-                    userId,
-                    offer,
-                    caller: {
-                        id: userId,
-                        name: caller.name,
-                        provider: caller.provider,
-                        role: Roles.USER,
-                    },
-                });
+                    await PresenceService.heartbeat(userId);
 
-                logCallDebug(CALL_OFFER_EVENT + ' forwarded', {
-                    fromUserId: userId,
-                    to: TRAINERS_ROOM,
-                });
+                    io.to(TRAINERS_ROOM).emit(CALL_OFFER_EVENT, {
+                        userId,
+                        offer,
+                        caller: {
+                            id: userId,
+                            name: caller.name,
+                            provider: caller.provider,
+                            role: Roles.USER,
+                        },
+                        initiatorRole: Roles.USER,
+                    });
+
+                    logCallDebug(CALL_OFFER_EVENT + ' forwarded', {
+                        fromUserId: userId,
+                        to: TRAINERS_ROOM,
+                    });
+                } else if ([Roles.TRAINER, Roles.ADMIN].includes(role)) {
+                    if (!targetUserId) {
+                        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Target userId is required');
+                    }
+                    if (activeCallSessions.has(targetUserId)) {
+                        throw new HttpResponseError(StatusCodes.CONFLICT, 'A call is already in progress for this user');
+                    }
+
+                    const caller = await UserService.getUserById(userId);
+
+                    activeCallSessions.set(targetUserId, {
+                        userId: targetUserId,
+                        initiatorId: userId,
+                        initiatorSocketId: socket.id,
+                        initiatorRole: role as SenderRole,
+                        startedAt: new Date(),
+                        status: 'ringing',
+                        trainerId: userId,
+                        trainerSocketId: socket.id,
+                    });
+
+                    await recordCallHistoryMessage({
+                        userId: targetUserId,
+                        senderId: userId,
+                        senderRole: role as SenderRole,
+                        status: 'started',
+                        metadata: {
+                            direction: 'outgoing',
+                            initiatorId: userId,
+                            initiatorRole: role,
+                            trainerId: userId,
+                        },
+                    });
+
+                    await PresenceService.heartbeat(userId);
+
+                    io.to(getUserRoom(targetUserId)).emit(CALL_OFFER_EVENT, {
+                        userId: targetUserId,
+                        offer,
+                        caller: {
+                            id: userId,
+                            name: caller.name,
+                            provider: caller.provider,
+                            role,
+                        },
+                        initiatorRole: role,
+                    });
+
+                    logCallDebug(CALL_OFFER_EVENT + ' forwarded', {
+                        fromTrainerId: userId,
+                        toUserId: targetUserId,
+                        userRoom: getUserRoom(targetUserId),
+                    });
+                } else {
+                    throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Unsupported role for starting calls');
+                }
 
                 callback?.({ status: 'ok' });
             } catch (error) {
@@ -265,58 +325,102 @@ export function initializeSocketServer(server: HTTPServer) {
                     activeCallSessions: activeCallSessions.size,
                 });
 
-                if (![Roles.TRAINER, Roles.ADMIN].includes(role)) {
-                    throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only trainers or admins can answer calls');
-                }
-
-                const normalizedTarget = typeof target === 'string' ? target.trim() : undefined;
-                const targetUserId = payloadUserId ?? (normalizedTarget && normalizedTarget !== TRAINERS_ROOM ? normalizedTarget : undefined);
-
-                if (!targetUserId) {
-                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Target userId is required');
-                }
                 if (!answer) {
                     throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'WebRTC SDP answer is required');
                 }
 
-                const session = activeCallSessions.get(targetUserId);
-                if (!session) {
-                    throw new HttpResponseError(StatusCodes.NOT_FOUND, 'No pending call for this user');
+                if (role === Roles.USER) {
+                    const session = activeCallSessions.get(userId);
+                    if (!session) {
+                        throw new HttpResponseError(StatusCodes.NOT_FOUND, 'No pending call for this user');
+                    }
+                    if (session.status === 'active') {
+                        throw new HttpResponseError(StatusCodes.CONFLICT, 'This call has already been answered');
+                    }
+                    if (session.initiatorRole === Roles.USER) {
+                        throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only trainers or admins can answer this call');
+                    }
+                    if (!session.trainerSocketId) {
+                        throw new HttpResponseError(StatusCodes.NOT_FOUND, 'No trainer attached to this call');
+                    }
+
+                    session.status = 'active';
+
+                    await recordCallHistoryMessage({
+                        userId,
+                        senderId: userId,
+                        senderRole: Roles.USER as SenderRole,
+                        status: 'answered',
+                        metadata: {
+                            trainerId: session.trainerId,
+                            initiatorRole: session.initiatorRole,
+                        },
+                    });
+
+                    await PresenceService.heartbeat(userId);
+
+                    io.to(session.trainerSocketId).emit(CALL_ANSWER_EVENT, {
+                        answer,
+                        userId,
+                    });
+
+                    logCallDebug(CALL_ANSWER_EVENT + ' forwarded', {
+                        fromUserId: userId,
+                        toTrainerSocketId: session.trainerSocketId,
+                    });
+                } else if ([Roles.TRAINER, Roles.ADMIN].includes(role)) {
+                    const normalizedTarget = typeof target === 'string' ? target.trim() : undefined;
+                    const targetUserId = payloadUserId ?? (normalizedTarget && normalizedTarget !== TRAINERS_ROOM ? normalizedTarget : undefined);
+
+                    if (!targetUserId) {
+                        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Target userId is required');
+                    }
+
+                    const session = activeCallSessions.get(targetUserId);
+                    if (!session) {
+                        throw new HttpResponseError(StatusCodes.NOT_FOUND, 'No pending call for this user');
+                    }
+                    if (session.status === 'active') {
+                        throw new HttpResponseError(StatusCodes.CONFLICT, 'This call has already been answered');
+                    }
+                    if (session.initiatorRole !== Roles.USER) {
+                        throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only the user can answer this call');
+                    }
+
+                    session.status = 'active';
+                    session.trainerId = userId;
+                    session.trainerSocketId = socket.id;
+
+                    await recordCallHistoryMessage({
+                        userId: targetUserId,
+                        senderId: userId,
+                        senderRole: role as SenderRole,
+                        status: 'answered',
+                        metadata: {
+                            trainerId: userId,
+                            initiatorRole: session.initiatorRole,
+                        },
+                    });
+
+                    await PresenceService.heartbeat(userId);
+
+                    io.to(getUserRoom(targetUserId)).emit(CALL_ANSWER_EVENT, {
+                        answer,
+                        trainer: {
+                            label: 'trainer',
+                            id: userId,
+                        },
+                        userId: targetUserId,
+                    });
+
+                    logCallDebug(CALL_ANSWER_EVENT + ' forwarded', {
+                        fromTrainerId: userId,
+                        toUserId: targetUserId,
+                        userRoom: getUserRoom(targetUserId),
+                    });
+                } else {
+                    throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Unsupported role for answering calls');
                 }
-                if (session.status === 'active') {
-                    throw new HttpResponseError(StatusCodes.CONFLICT, 'This call has already been answered');
-                }
-
-                session.status = 'active';
-                session.trainerId = userId;
-                session.trainerSocketId = socket.id;
-
-                await recordCallHistoryMessage({
-                    userId: targetUserId,
-                    senderId: userId,
-                    senderRole: role as SenderRole,
-                    status: 'answered',
-                    metadata: {
-                        trainerId: userId,
-                    },
-                });
-
-                await PresenceService.heartbeat(userId);
-
-                io.to(getUserRoom(targetUserId)).emit(CALL_ANSWER_EVENT, {
-                    answer,
-                    trainer: {
-                        label: 'trainer',
-                        id: userId,
-                    },
-                    userId: targetUserId,
-                });
-
-                logCallDebug(CALL_ANSWER_EVENT + ' forwarded', {
-                    fromTrainerId: userId,
-                    toUserId: targetUserId,
-                    userRoom: getUserRoom(targetUserId),
-                });
 
                 callback?.({ status: 'ok' });
             } catch (error) {
@@ -562,6 +666,7 @@ export function initializeSocketServer(server: HTTPServer) {
                 endedBy: options.endedBy,
                 reason: options.reason,
                 initiatorId: session.initiatorId,
+                initiatorRole: session.initiatorRole,
                 trainerId: session.trainerId,
             },
         });

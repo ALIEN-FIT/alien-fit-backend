@@ -213,8 +213,11 @@ callOfferBtn.addEventListener('click', () => {
         ensureSocket();
         const offer = parseJsonInput(offerSdpTextarea.value.trim(), 'offer');
         if (!offer) return log('Offer payload is required');
-        socket.emit('call:offer', { offer }, (response) => log('call:offer ack', response));
-        log('Emitted call:offer', { offer });
+        const targetUserId = callTargetUserIdInput.value.trim();
+        const payload = { offer };
+        if (targetUserId) payload.userId = targetUserId;
+        socket.emit('call:offer', payload, (response) => log('call:offer ack', response));
+        log('Emitted call:offer', payload);
     } catch (error) {
         log('call:offer failed', error.message);
     }
@@ -223,11 +226,11 @@ callOfferBtn.addEventListener('click', () => {
 callAnswerBtn.addEventListener('click', () => {
     try {
         ensureSocket();
-        const targetUserId = callTargetUserIdInput.value.trim();
-        if (!targetUserId) throw new Error('Target user ID is required to answer');
         const answer = parseJsonInput(answerSdpTextarea.value.trim(), 'answer');
         if (!answer) throw new Error('Answer payload is required');
-        const payload = { userId: targetUserId, answer };
+        const targetUserId = callTargetUserIdInput.value.trim();
+        const payload = { answer };
+        if (targetUserId) payload.userId = targetUserId;
         socket.emit('call:answer', payload, (response) => log('call:answer ack', response));
         log('Emitted call:answer', payload);
     } catch (error) {

@@ -11,6 +11,7 @@ const localVideo = document.getElementById("localVideo");
 const remoteVideo = document.getElementById("remoteVideo");
 const startBtn = document.getElementById("startCall");
 const endBtn = document.getElementById("endCall");
+const audioOnlyCheckbox = document.getElementById("audioOnly");
 
 // UI for dynamic backend URL and token
 const backendInput = document.getElementById("backendUrl");
@@ -75,6 +76,46 @@ function setupSocketHandlers() {
         cleanupCall();
     });
 
+    socket.on("call:offer", async ({ offer }) => {
+        if (!offer) return;
+
+        if (pc) {
+            cleanupCall();
+        }
+
+        try {
+            pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+            const audioOnly = audioOnlyCheckbox?.checked ?? false;
+            localStream = await navigator.mediaDevices.getUserMedia({ video: !audioOnly, audio: true });
+            localVideo.srcObject = localStream;
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            pc.ontrack = event => {
+                if (event.streams && event.streams[0]) {
+                    remoteVideo.srcObject = event.streams[0];
+                }
+            };
+
+            pc.onicecandidate = event => {
+                if (event.candidate) {
+                    socket.emit("call:ice-candidate", { candidate: event.candidate });
+                }
+            };
+
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            await drainPendingCandidates();
+
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            socket.emit("call:answer", { answer });
+        } catch (error) {
+            console.error("Failed to handle incoming offer", error);
+            cleanupCall();
+        }
+    });
+
     socket.on("disconnect", () => {
         stopHeartbeat();
         cleanupCall();
@@ -133,7 +174,8 @@ startBtn.onclick = async () => {
     try {
         pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        const audioOnly = audioOnlyCheckbox?.checked ?? false;
+        localStream = await navigator.mediaDevices.getUserMedia({ video: !audioOnly, audio: true });
         localVideo.srcObject = localStream;
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
