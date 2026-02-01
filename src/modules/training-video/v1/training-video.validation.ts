@@ -22,6 +22,7 @@ export const updateTrainingVideoSchema = Joi.object({
     title: Joi.string().trim().min(3).max(200).optional(),
     description: Joi.string().allow('', null).optional(),
     videoUrl: Joi.string().optional(),
+    isActive: Joi.boolean().optional(),
     tagIds: tagIdsField.optional(),
 })
     .min(1)
@@ -65,3 +66,7 @@ export const listTrainingTagQuerySchema = Joi.object({
     sortBy: Joi.string().valid('createdAt', 'title').optional(),
     sortDirection: Joi.string().valid('asc', 'desc').optional(),
 }).unknown(true);
+
+export const syncTrainingVideosSchema = Joi.object({
+    returnUrl: Joi.string().uri().optional(),
+}).unknown(false);

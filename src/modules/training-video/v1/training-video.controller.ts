@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { TrainingVideoService, TrainingTagService } from './training-video.service.js';
+import { Roles } from '../../../constants/roles.js';
+import { env } from '../../../config/env.js';
+import { exchangeYouTubeCodeForTokens } from '../../../config/youtube-client.js';
+import { createSignedState, verifySignedState } from '../../../utils/signed-state.js';
 
 export async function createTrainingVideoController(req: Request, res: Response) {
     const payload = {
@@ -60,6 +64,82 @@ export async function listTrainingVideosController(req: Request, res: Response) 
         status: 'success',
         data,
     });
+}
+
+export async function syncTrainingVideosFromYouTubeController(req: Request, res: Response) {
+    const returnUrl = typeof (req.body as any)?.returnUrl === 'string' ? String((req.body as any).returnUrl) : undefined;
+    const result = await TrainingVideoService.syncFromYouTube(req.user!, { returnUrl });
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: result,
+    });
+}
+
+type YouTubeOAuthStatePayload = {
+    returnUrl: string;
+    exp: number;
+};
+
+export async function youtubeOAuthCallbackController(req: Request, res: Response) {
+    const error = typeof req.query.error === 'string' ? req.query.error : undefined;
+    const code = typeof req.query.code === 'string' ? req.query.code : undefined;
+    const state = typeof req.query.state === 'string' ? req.query.state : undefined;
+
+    const secret = env.YOUTUBE_OAUTH_STATE_SECRET ?? env.JWT_PRIVATE_KEY;
+    let payload: YouTubeOAuthStatePayload | null = null;
+
+    try {
+        if (state) {
+            payload = verifySignedState<YouTubeOAuthStatePayload>(state, secret);
+            if (Date.now() > payload.exp) {
+                throw new Error('State expired');
+            }
+        }
+    } catch {
+        payload = null;
+    }
+
+    const fallbackReturnUrl = env.APP_URL;
+    const returnUrl = payload?.returnUrl || fallbackReturnUrl;
+
+    const redirect = (params: Record<string, string>) => {
+        const url = new URL(returnUrl);
+        Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+        res.redirect(url.toString());
+    };
+
+    if (error) {
+        return redirect({ youtubeAuth: 'error', reason: error });
+    }
+
+    if (!code) {
+        return redirect({ youtubeAuth: 'error', reason: 'missing_code' });
+    }
+
+    try {
+        await exchangeYouTubeCodeForTokens(code);
+
+        // Run sync using a system admin actor (no JWT in OAuth callback).
+        const systemAdmin = { role: Roles.ADMIN } as any;
+        const result = await TrainingVideoService.syncFromYouTube(systemAdmin, { returnUrl });
+
+        if ((result as any)?.requiresAuth) {
+            // Rare: if Google didn’t grant offline access.
+            const exp = Date.now() + 10 * 60 * 1000;
+            const signed = createSignedState<YouTubeOAuthStatePayload>({ returnUrl, exp }, secret);
+            return redirect({ youtubeAuth: 'ok', youtubeSync: 'auth_required', authUrl: String((result as any).authUrl ?? ''), state: signed.state });
+        }
+
+        return redirect({
+            youtubeAuth: 'ok',
+            youtubeSync: 'success',
+            added: String((result as any).added ?? 0),
+            skipped: String((result as any).skipped ?? 0),
+            total: String((result as any).total ?? 0),
+        });
+    } catch (e: any) {
+        return redirect({ youtubeAuth: 'error', reason: e?.message ? String(e.message) : 'sync_failed' });
+    }
 }
 
 export async function createTrainingTagController(req: Request, res: Response) {

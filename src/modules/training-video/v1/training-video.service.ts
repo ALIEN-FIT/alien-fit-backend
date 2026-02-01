@@ -5,6 +5,10 @@ import { UserEntity } from '../../user/v1/entity/user.entity.js';
 import { TrainingVideoRepository, TrainingVideoFilters, PaginationOptions } from './training-video.repository.js';
 import { TrainingTagRepository, TrainingTagFilters, TagPaginationOptions } from './training-tag.repository.js';
 import { TrainingVideoEntity } from './entity/training-video.entity.js';
+import { generateYouTubeAuthUrl, getYouTubeClient, hasYouTubeAuthConfigured } from '../../../config/youtube-client.js';
+import { env } from '../../../config/env.js';
+import { createSignedState } from '../../../utils/signed-state.js';
+import { clearYouTubeStoredTokens } from '../../../config/youtube-token-store.js';
 
 interface CreateTrainingVideoPayload {
     title: string;
@@ -17,6 +21,7 @@ interface UpdateTrainingVideoPayload {
     title?: string;
     description?: string | null;
     videoUrl?: string;
+    isActive?: boolean;
     tagIds?: string[];
 }
 
@@ -45,6 +50,7 @@ export class TrainingVideoService {
             title: payload.title,
             description: payload.description,
             videoUrl: payload.videoUrl,
+            isActive: payload.isActive,
             tagIds: uniqueTagIds ?? null,
         });
 
@@ -70,12 +76,89 @@ export class TrainingVideoService {
         if (!video) {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training video not found');
         }
+        if (actor.role !== Roles.ADMIN && !video.isActive) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training video not found');
+        }
         return video;
     }
 
     static listVideos(actor: UserEntity, filters: TrainingVideoFilters, pagination: PaginationOptions) {
         assertAuthenticated(actor);
-        return TrainingVideoRepository.listVideos(filters, pagination);
+        const isAdmin = actor.role === Roles.ADMIN;
+        return TrainingVideoRepository.listVideos(filters, pagination, isAdmin);
+    }
+
+    static async syncFromYouTube(actor: UserEntity, options?: { returnUrl?: string }) {
+        assertAdmin(actor);
+
+        if (!hasYouTubeAuthConfigured()) {
+            const returnUrl = options?.returnUrl || env.APP_URL;
+            const exp = Date.now() + 10 * 60 * 1000;
+            const secret = env.YOUTUBE_OAUTH_STATE_SECRET ?? env.JWT_PRIVATE_KEY;
+            const signed = createSignedState({ returnUrl, exp }, secret);
+            const authUrl = generateYouTubeAuthUrl(signed.state);
+
+            return {
+                requiresAuth: true as const,
+                authUrl,
+            };
+        }
+
+        let uploads: YouTubeUploadItem[];
+        try {
+            uploads = await fetchYouTubeUploads();
+        } catch (e: any) {
+            if (isInvalidGrantError(e)) {
+                await clearYouTubeStoredTokens();
+
+                const returnUrl = options?.returnUrl || env.APP_URL;
+                const exp = Date.now() + 10 * 60 * 1000;
+                const secret = env.YOUTUBE_OAUTH_STATE_SECRET ?? env.JWT_PRIVATE_KEY;
+                const signed = createSignedState({ returnUrl, exp }, secret);
+                const authUrl = generateYouTubeAuthUrl(signed.state);
+
+                return {
+                    requiresAuth: true as const,
+                    authUrl,
+                };
+            }
+
+            throw e;
+        }
+
+        let added = 0;
+        let skipped = 0;
+
+        for (const item of uploads) {
+            const existingByYoutubeId = await TrainingVideoRepository.findByYoutubeVideoId(item.youtubeVideoId);
+            if (existingByYoutubeId) {
+                skipped += 1;
+                continue;
+            }
+
+            const existingByUrl = await TrainingVideoRepository.findByVideoUrl(item.videoUrl);
+            if (existingByUrl) {
+                skipped += 1;
+                continue;
+            }
+
+            await TrainingVideoRepository.createVideo({
+                title: item.title,
+                description: item.description ?? null,
+                videoUrl: item.videoUrl,
+                youtubeVideoId: item.youtubeVideoId,
+                isActive: false,
+            });
+
+            added += 1;
+        }
+
+        return {
+            requiresAuth: false as const,
+            added,
+            skipped,
+            total: uploads.length,
+        };
     }
 
     static async ensureVideosExist(ids: string[]): Promise<Map<string, TrainingVideoEntity>> {
@@ -179,4 +262,64 @@ function assertAuthenticated(actor: UserEntity) {
     if (!actor) {
         throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Authentication required');
     }
+}
+
+interface YouTubeUploadItem {
+    youtubeVideoId: string;
+    title: string;
+    description?: string | null;
+    videoUrl: string;
+}
+
+async function fetchYouTubeUploads(): Promise<YouTubeUploadItem[]> {
+    const youtube = getYouTubeClient();
+
+    const channels = await youtube.channels.list({
+        part: ['contentDetails'],
+        mine: true,
+    });
+
+    const channel = channels.data.items?.[0];
+    const uploadsPlaylistId = channel?.contentDetails?.relatedPlaylists?.uploads;
+
+    if (!uploadsPlaylistId) {
+        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'No uploads playlist found for the channel');
+    }
+
+    const results: YouTubeUploadItem[] = [];
+    let nextPageToken: string | undefined;
+
+    do {
+        const page = await youtube.playlistItems.list({
+            part: ['snippet', 'contentDetails'],
+            playlistId: uploadsPlaylistId,
+            maxResults: 50,
+            pageToken: nextPageToken,
+        });
+
+        for (const item of page.data.items ?? []) {
+            const youtubeVideoId = item.contentDetails?.videoId;
+            const title = item.snippet?.title?.trim();
+            if (!youtubeVideoId || !title) {
+                continue;
+            }
+
+            results.push({
+                youtubeVideoId,
+                title,
+                description: item.snippet?.description ?? null,
+                videoUrl: `https://www.youtube.com/watch?v=${youtubeVideoId}`,
+            });
+        }
+
+        nextPageToken = page.data.nextPageToken ?? undefined;
+    } while (nextPageToken);
+
+    return results;
+}
+
+function isInvalidGrantError(error: any): boolean {
+    const message = typeof error?.message === 'string' ? error.message : '';
+    const responseError = error?.response?.data?.error;
+    return message.includes('invalid_grant') || responseError === 'invalid_grant';
 }

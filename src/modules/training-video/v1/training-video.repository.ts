@@ -22,6 +22,8 @@ export class TrainingVideoRepository {
             title: string;
             description?: string | null;
             videoUrl: string;
+            youtubeVideoId?: string | null;
+            isActive?: boolean;
             tagIds?: string[];
         },
         transaction?: Transaction,
@@ -31,6 +33,8 @@ export class TrainingVideoRepository {
                 title: payload.title,
                 description: payload.description ?? null,
                 videoUrl: payload.videoUrl,
+                youtubeVideoId: payload.youtubeVideoId ?? null,
+                isActive: payload.isActive ?? false,
             },
             { transaction },
         );
@@ -79,6 +83,7 @@ export class TrainingVideoRepository {
             title?: string;
             description?: string | null;
             videoUrl?: string;
+            isActive?: boolean;
             tagIds?: string[] | null;
         },
         transaction?: Transaction,
@@ -93,6 +98,7 @@ export class TrainingVideoRepository {
                 title: payload.title ?? video.title,
                 description: payload.description ?? video.description,
                 videoUrl: payload.videoUrl ?? video.videoUrl,
+                isActive: payload.isActive ?? video.isActive,
             },
             { transaction },
         );
@@ -108,8 +114,19 @@ export class TrainingVideoRepository {
         return TrainingVideoEntity.destroy({ where: { id }, transaction });
     }
 
-    static async listVideos(filters: TrainingVideoFilters, pagination: PaginationOptions) {
+    static findByYoutubeVideoId(youtubeVideoId: string, transaction?: Transaction) {
+        return TrainingVideoEntity.findOne({ where: { youtubeVideoId }, transaction });
+    }
+
+    static findByVideoUrl(videoUrl: string, transaction?: Transaction) {
+        return TrainingVideoEntity.findOne({ where: { videoUrl }, transaction });
+    }
+
+    static async listVideos(filters: TrainingVideoFilters, pagination: PaginationOptions, isAdmin: boolean) {
         const where: WhereOptions = {};
+        if (!isAdmin) {
+            (where as any).isActive = true;
+        }
         if (filters.search) {
             (where as any)[Op.or] = [
                 { title: { [SEARCH_OPERATOR]: `%${filters.search}%` } },

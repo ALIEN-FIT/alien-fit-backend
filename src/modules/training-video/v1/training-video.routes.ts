@@ -7,7 +7,9 @@ import {
     deleteTrainingVideoController,
     getTrainingVideoController,
     listTrainingVideosController,
+    syncTrainingVideosFromYouTubeController,
     updateTrainingVideoController,
+    youtubeOAuthCallbackController,
     createTrainingTagController,
     deleteTrainingTagController,
     getTrainingTagController,
@@ -23,9 +25,13 @@ import {
     updateTrainingTagSchema,
     trainingTagParamSchema,
     listTrainingTagQuerySchema,
+    syncTrainingVideosSchema,
 } from './training-video.validation.js';
 
 export const trainingVideoRouterV1 = express.Router();
+
+// Public OAuth callback (Google redirects the user here; no JWT available)
+trainingVideoRouterV1.get('/youtube/callback', youtubeOAuthCallbackController);
 
 trainingVideoRouterV1.use(auth);
 
@@ -34,6 +40,13 @@ trainingVideoRouterV1.post(
     authorizeRoles(Roles.ADMIN),
     validateRequest(createTrainingVideoSchema),
     createTrainingVideoController,
+);
+
+trainingVideoRouterV1.post(
+    '/youtube/sync',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(syncTrainingVideosSchema),
+    syncTrainingVideosFromYouTubeController,
 );
 
 trainingVideoRouterV1.get(

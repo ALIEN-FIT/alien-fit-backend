@@ -17,6 +17,8 @@ export class TrainingVideoEntity extends Model {
     declare title: string;
     declare description: string | null;
     declare videoUrl: string;
+    declare youtubeVideoId: string | null;
+    declare isActive: boolean;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -82,6 +84,16 @@ TrainingVideoEntity.init(
         videoUrl: {
             type: DataTypes.STRING,
             allowNull: false,
+        },
+        youtubeVideoId: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            unique: true,
+        },
+        isActive: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
         },
     },
     {
