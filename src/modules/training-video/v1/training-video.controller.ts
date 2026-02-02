@@ -30,6 +30,15 @@ export async function updateTrainingVideoController(req: Request, res: Response)
     });
 }
 
+export async function toggleTrainingVideoActiveController(req: Request, res: Response) {
+    const video = await TrainingVideoService.getVideo(req.user!, req.params.videoId);
+    const updated = await TrainingVideoService.updateVideo(req.user!, req.params.videoId, { isActive: !video.isActive });
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { video: updated },
+    });
+}
+
 export async function deleteTrainingVideoController(req: Request, res: Response) {
     const result = await TrainingVideoService.deleteVideo(req.user!, req.params.videoId);
     res.status(StatusCodes.OK).json({

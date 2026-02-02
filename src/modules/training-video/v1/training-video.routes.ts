@@ -9,6 +9,7 @@ import {
     listTrainingVideosController,
     syncTrainingVideosFromYouTubeController,
     updateTrainingVideoController,
+    toggleTrainingVideoActiveController,
     youtubeOAuthCallbackController,
     createTrainingTagController,
     deleteTrainingTagController,
@@ -94,6 +95,13 @@ trainingVideoRouterV1.get(
     '/:videoId',
     validateRequest(trainingVideoParamSchema),
     getTrainingVideoController,
+);
+
+trainingVideoRouterV1.patch(
+    '/:videoId/toggle-active',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(trainingVideoParamSchema),
+    toggleTrainingVideoActiveController,
 );
 
 trainingVideoRouterV1.patch(
