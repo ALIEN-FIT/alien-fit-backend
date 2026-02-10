@@ -42,6 +42,24 @@ async function hydrateSubscription(subscription: SubscriptionEntity | null): Pro
 }
 
 export class SubscriptionService {
+    static async activateFreeSubscription(userId: string, freeDays: number): Promise<SubscriptionEntity> {
+        await UserService.getUserById(userId);
+        const startDate = new Date();
+        const endDate = addDays(startDate, freeDays);
+
+        const subscription = await SubscriptionRepository.upsert(userId, {
+            isSubscribed: true,
+            isActive: true,
+            isFree: true,
+            freeDays,
+            startDate,
+            endDate,
+            nextProfileUpdateDue: calculateNextProfileDue(startDate),
+        });
+
+        return hydrateSubscription(subscription) as Promise<SubscriptionEntity>;
+    }
+
     static async activateSubscription(userId: string, cycles = 1): Promise<SubscriptionEntity> {
         await UserService.getUserById(userId);
         const startDate = new Date();
@@ -55,6 +73,7 @@ export class SubscriptionService {
         const subscription = await SubscriptionRepository.upsert(userId, {
             isSubscribed: true,
             isActive: true,
+            isFree: false,
             startDate,
             endDate,
             nextProfileUpdateDue,
@@ -72,6 +91,7 @@ export class SubscriptionService {
 
         const subscription = await SubscriptionRepository.upsert(userId, {
             isSubscribed: true,
+            isFree: false,
             isActive: true,
             startDate: now,
             endDate,

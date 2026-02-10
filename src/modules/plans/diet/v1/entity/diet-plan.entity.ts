@@ -4,7 +4,7 @@ import { UserEntity } from '../../../../user/v1/entity/user.entity.js';
 
 export class DietPlanEntity extends Model {
     declare id: string;
-    declare userId: string;
+    declare userId: string | null;
     declare startDate: Date;
     declare endDate: Date;
     declare recommendedWaterIntakeMl: number | null;
@@ -50,8 +50,8 @@ DietPlanEntity.init(
         },
         userId: {
             type: DataTypes.UUID,
-            allowNull: false,
-            unique: true,
+            allowNull: true,
+            unique: false,
         },
         startDate: {
             type: DataTypes.DATE,

@@ -5,7 +5,7 @@ import { TrainingVideoEntity } from '../../../../training-video/v1/entity/traini
 
 export class TrainingPlanEntity extends Model {
     declare id: string;
-    declare userId: string;
+    declare userId: string | null;
     declare startDate: Date;
     declare endDate: Date;
 
@@ -55,8 +55,8 @@ TrainingPlanEntity.init(
         },
         userId: {
             type: DataTypes.UUID,
-            allowNull: false,
-            unique: true,
+            allowNull: true,
+            unique: false,
         },
         startDate: {
             type: DataTypes.DATE,

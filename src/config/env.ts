@@ -53,6 +53,14 @@ const envSchema = z.object({
     CLOUDFLARE_ACCESS_KEY_ID: z.string().min(1, 'CLOUDFLARE_ACCESS_KEY_ID must not be empty'),
     HTTPS: z.boolean().default(false),
 
+    // SMS providers
+    WHYSMS_API_KEY: z.string().optional(),
+    WHYSMS_SENDER_ID: z.string().optional(),
+    NOTIFIRE_DEVICE_ID: z.string().optional(),
+
+    // Default subscription settings
+    DEFAULT_FREE_SUBSCRIPTION_DAYS: z.coerce.number().int().min(0).max(365).default(7),
+
     // Debug flags
     SOCKET_CALL_DEBUG: z.coerce.boolean().default(true),
 

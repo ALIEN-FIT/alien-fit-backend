@@ -70,6 +70,12 @@ export const userValidationSchema = Joi.object({
     profileBackgroundImageId: Joi.string().uuid().allow(null).optional().messages({
         'string.base': 'Profile background image ID must be a string',
         'string.guid': 'Profile background image ID must be a valid UUID'
+    }),
+    freeDays: Joi.number().integer().min(0).max(365).optional().messages({
+        'number.base': 'Free days must be a number',
+        'number.integer': 'Free days must be an integer',
+        'number.min': 'Free days must be at least 0',
+        'number.max': 'Free days cannot exceed 365'
     })
 });
 

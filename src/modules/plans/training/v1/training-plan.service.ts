@@ -8,6 +8,8 @@ import { UserEntity } from '../../../user/v1/entity/user.entity.js';
 import { addDays, addWeeks, startOfDayUTC } from '../../../../utils/date.utils.js';
 import { TrainingVideoService } from '../../../training-video/v1/training-video.service.js';
 import { TrainingVideoEntity } from '../../../training-video/v1/entity/training-video.entity.js';
+import { SubscriptionService } from '../../../subscription/v1/subscription.service.js';
+import { AdminSettingsService } from '../../../admin-settings/v1/admin-settings.service.js';
 
 interface SupersetItemInput {
     trainingVideoId: string;
@@ -74,6 +76,20 @@ export class TrainingPlanService {
     static async getTrainingPlan(actor: UserEntity, userId: string): Promise<TrainingPlanEntity> {
         if (actor.role !== Roles.ADMIN && actor.id !== userId) {
             throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Not allowed to view this training plan');
+        }
+
+        // Check subscription status
+        const subscriptionStatus = await SubscriptionService.getStatus(userId);
+
+        // If free subscription, return default plan if configured
+        if (subscriptionStatus.subscription?.isFree) {
+            const defaultPlanId = await AdminSettingsService.getDefaultTrainingPlanId();
+            if (defaultPlanId) {
+                const defaultPlan = await TrainingPlanRepository.findById(defaultPlanId);
+                if (defaultPlan) {
+                    return defaultPlan;
+                }
+            }
         }
 
         const plan = await TrainingPlanRepository.findByUserId(userId);

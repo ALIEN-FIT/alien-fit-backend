@@ -11,8 +11,74 @@ import { errorLogger } from '../../../config/logger.config.js';
 import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
 import { UserProfileService } from '../../user-profile/v1/user-profile.service.js';
 import { UserProfileEntity } from '../../user-profile/v1/model/user-profile.model.js';
+import { otpService } from '../../otp/v1/otp.service.js';
 
+// OTP-based authentication
+export async function sendOTPForAuthController(req: Request, res: Response): Promise<void> {
+    const { phone } = req.body;
+    await otpService.sendOTP(phone);
 
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        message: 'OTP sent successfully',
+    });
+}
+
+export async function loginWithOTPController(req: Request, res: Response): Promise<void> {
+    const { phone, otp } = req.body;
+
+    const { user, accessToken, refreshToken } = await AuthService.loginWithOTP(phone, otp);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: {
+            user: await UserService.getUserById(user.id.toString()),
+            accessToken,
+            refreshToken,
+        },
+    });
+}
+
+export async function registerWithOTPController(req: Request, res: Response): Promise<void> {
+    const { phone, otp, name, ...userData } = req.body;
+
+    const { user, accessToken, refreshToken } = await AuthService.registerWithOTP(phone, otp, {
+        name,
+        ...userData,
+    });
+
+    res.status(StatusCodes.CREATED).json({
+        status: 'success',
+        data: {
+            user: await UserService.getUserById(user.id.toString()),
+            accessToken,
+            refreshToken,
+        },
+    });
+}
+
+// Forgot password flow
+export async function forgotPasswordController(req: Request, res: Response): Promise<void> {
+    const { phone } = req.body;
+    await AuthService.forgotPasswordSendOTP(phone);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        message: 'OTP sent to your phone',
+    });
+}
+
+export async function resetPasswordController(req: Request, res: Response): Promise<void> {
+    const { phone, otp, newPassword } = req.body;
+    await AuthService.resetPasswordWithOTP(phone, otp, newPassword);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        message: 'Password reset successfully',
+    });
+}
+
+// Legacy authentication (kept for backward compatibility)
 export async function loginController(req: Request, res: Response): Promise<void> {
     const { provider, password } = req.body;
 
@@ -153,6 +219,15 @@ export async function getMeController(req: Request, res: Response): Promise<void
         SubscriptionService.getStatus(userId),
         getUserProfileOrNull(userId),
     ]);
+
+    // Check subscription warning (less than 3 days)
+    const subscriptionWarning = subscriptionStatus.subscription?.endDate
+        ? (subscriptionStatus.subscription.endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24) < 3
+        : false;
+
+    // Determine subscription type
+    const subscriptionType = subscriptionStatus.isSubscribed ? 'paid' : 'free';
+
     res.status(StatusCodes.OK).json({
         status: 'success',
         data: {
@@ -160,8 +235,10 @@ export async function getMeController(req: Request, res: Response): Promise<void
             isSubscribed: subscriptionStatus.isSubscribed,
             profileUpdateRequired: subscriptionStatus.profileUpdateRequired,
             subscriptionStatus,
+            subscriptionType,
+            subscriptionWarning,
             profile,
-        }
+        },
     });
 }
 

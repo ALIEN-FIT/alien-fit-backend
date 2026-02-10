@@ -11,6 +11,8 @@ export class SubscriptionEntity extends Model {
     declare lastProfileUpdateAt: Date | null;
     declare nextProfileUpdateDue: Date | null;
     declare isActive: boolean;
+    declare isFree: boolean;
+    declare freeDays: number;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -51,6 +53,14 @@ SubscriptionEntity.init(
         isActive: {
             type: DataTypes.BOOLEAN,
             defaultValue: false,
+        },
+        isFree: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false,
+        },
+        freeDays: {
+            type: DataTypes.INTEGER,
+            defaultValue: 0,
         },
     },
     {

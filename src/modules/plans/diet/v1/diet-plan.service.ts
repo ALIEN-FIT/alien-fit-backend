@@ -6,6 +6,8 @@ import { DietPlanRepository } from './diet-plan.repository.js';
 import { DietPlanEntity } from './entity/diet-plan.entity.js';
 import { UserEntity } from '../../../user/v1/entity/user.entity.js';
 import { addWeeks, startOfDayUTC } from '../../../../utils/date.utils.js';
+import { SubscriptionService } from '../../../subscription/v1/subscription.service.js';
+import { AdminSettingsService } from '../../../admin-settings/v1/admin-settings.service.js';
 
 interface FoodInput {
     name: string;
@@ -72,6 +74,20 @@ export class DietPlanService {
     static async getDietPlan(actor: UserEntity, userId: string): Promise<DietPlanEntity> {
         if (actor.role !== Roles.ADMIN && actor.id !== userId) {
             throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Not allowed to view this diet plan');
+        }
+
+        // Check subscription status
+        const subscriptionStatus = await SubscriptionService.getStatus(userId);
+
+        // If free subscription, return default plan if configured
+        if (subscriptionStatus.subscription?.isFree) {
+            const defaultPlanId = await AdminSettingsService.getDefaultDietPlanId();
+            if (defaultPlanId) {
+                const defaultPlan = await DietPlanRepository.findById(defaultPlanId);
+                if (defaultPlan) {
+                    return defaultPlan;
+                }
+            }
         }
 
         const plan = await DietPlanRepository.findByUserId(userId);

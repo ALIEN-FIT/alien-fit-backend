@@ -9,6 +9,7 @@ import { passportConfig } from './config/passport.config.js';
 import { env } from './config/env.js';
 import { initializeSocketServer } from './socket/socket-server.js';
 import { startNotificationWorkers } from './workers/notification/index.js';
+import { initializeOTPCleanupJob } from './workers/otp-cleanup.worker.js';
 
 const app = express();
 const PORT = env.PORT;
@@ -31,6 +32,7 @@ passportConfig();
 initializeApp(app);
 initializeSocketServer(server);
 startNotificationWorkers();
+initializeOTPCleanupJob();
 
 server.listen(PORT, () => {
     console.log(`Server running with Socket.io on ${USE_HTTPS ? 'HTTPS' : 'HTTP'} on port ${PORT}`);

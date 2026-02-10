@@ -26,6 +26,7 @@ export class UserEntity extends Model {
     declare profileBackgroundImageId?: string | null;
     declare isOnline: boolean;
     declare lastSeen: Date | null;
+    declare freeDays: number;
 
     // timestamps
     declare readonly createdAt: Date;
@@ -129,6 +130,11 @@ UserEntity.init(
             type: DataTypes.DATE,
             allowNull: true,
             defaultValue: null,
+        },
+        freeDays: {
+            type: DataTypes.INTEGER,
+            defaultValue: 0,
+            allowNull: false,
         },
     },
     {
