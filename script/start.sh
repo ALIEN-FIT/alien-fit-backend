@@ -93,6 +93,9 @@ show_usage() {
     echo "  clean       Stop and remove all containers, volumes, and images"
     echo "  db-shell    Open PostgreSQL shell"
     echo "  app-shell   Open shell in app container"
+    echo "  migrate     Run database migrations"
+    echo "  migrate:down Revert last migration"
+    echo "  migrate:status Show migration status"
     echo ""
     echo "Options:"
     echo "  -e, --env FILE    Use specified env file (default: .env)"
@@ -105,6 +108,7 @@ show_usage() {
     echo "  $0 start -e .env.prod       # Start with production env"
     echo "  $0 logs -f                  # Follow logs"
     echo "  $0 build                    # Rebuild application"
+    echo "  $0 migrate                  # Run migrations"
 }
 
 start_services() {
@@ -180,6 +184,23 @@ app_shell() {
     docker compose --env-file "$ENV_FILE" exec app sh
 }
 
+run_migrations() {
+    print_info "Running database migrations..."
+    docker compose --env-file "$ENV_FILE" exec app npm run migration:up
+    print_success "Migrations completed"
+}
+
+revert_migration() {
+    print_info "Reverting last migration..."
+    docker compose --env-file "$ENV_FILE" exec app npm run migration:down
+    print_success "Migration reverted"
+}
+
+migration_status() {
+    print_info "Migration status:"
+    docker compose --env-file "$ENV_FILE" exec app npm run migration:status
+}
+
 # ===========================================
 # Main Script
 # ===========================================
@@ -251,5 +272,14 @@ case $COMMAND in
         ;;
     app-shell)
         app_shell
+        ;;
+    migrate)
+        run_migrations
+        ;;
+    migrate:down)
+        revert_migration
+        ;;
+    migrate:status)
+        migration_status
         ;;
 esac

@@ -25,7 +25,56 @@ Update your environment variables (see `.env.example`) with:
 REDIS_URL=redis://localhost:6379/0
 ```
 
-## 🔌 Socket.IO Contract
+## � Database Migrations
+
+This project uses Sequelize migrations to manage database schema changes. Migrations are version-controlled and run automatically in Docker.
+
+### Docker (Automatic)
+
+When you start the application with Docker, migrations run automatically:
+
+```bash
+# Start with Docker Compose (migrations run on startup)
+docker compose up -d
+
+# Or use the start script
+./script/start.sh start
+```
+
+### Manual Migration Commands
+
+```bash
+# Create a new migration
+npm run migration:create add-new-field
+
+# Run all pending migrations
+npm run migration:up
+
+# Revert last migration
+npm run migration:down
+
+# Check migration status
+npm run migration:status
+```
+
+### Docker Migration Commands
+
+```bash
+# Run migrations in Docker container
+./script/start.sh migrate
+
+# Check migration status
+./script/start.sh migrate:status
+
+# Revert last migration
+./script/start.sh migrate:down
+```
+
+For detailed information, see:
+- [Migration Guide](docs/migrations-guide.md)
+- [Docker Migrations Guide](docs/docker-migrations.md)
+
+## �🔌 Socket.IO Contract
 
 All socket connections must send a valid Bearer token via either:
 

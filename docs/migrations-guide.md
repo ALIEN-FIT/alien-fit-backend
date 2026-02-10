@@ -233,5 +233,6 @@ Your table likely exists from the old auto-sync. Either:
 
 ## References
 
+- [Docker Migrations Guide](./docker-migrations.md)
 - [Sequelize Migrations Documentation](https://sequelize.org/docs/v6/other-topics/migrations/)
 - [Sequelize CLI Documentation](https://github.com/sequelize/cli)

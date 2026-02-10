@@ -32,15 +32,25 @@ RUN apk add --no-cache wget ffmpeg
 COPY package*.json ./
 RUN npm ci --only=production
 
+# Copy built application
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/dist/i18n ./dist/i18n
+
+# Copy migration files and configuration
+COPY --from=builder /app/src/database/migrations ./src/database/migrations
+COPY --from=builder /app/src/database/config.cjs ./src/database/config.cjs
+COPY --from=builder /app/.sequelizerc ./.sequelizerc
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD wget --spider -q http://localhost:3000/health/ready || exit 1
 
-ENTRYPOINT []
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 CMD ["node", "dist/index.js"]
