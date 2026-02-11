@@ -15,8 +15,14 @@ RUN npm ci
 # Copy source
 COPY . .
 
+# Copy entrypoint script for dev mode
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Build
 RUN npm run build
+
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 
 # =========================
