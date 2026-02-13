@@ -4,6 +4,7 @@ import { sequelize } from '../../../database/db-config.js';
 import { HttpResponseError } from '../../../utils/appError.js';
 import { Roles } from '../../../constants/roles.js';
 import { UserEntity, UserFollowEntity } from '../../user/v1/entity/user.entity.js';
+import { BlockService } from '../../block/v1/block.service.js';
 import { MediaEntity } from '../../media/v1/model/media.model.js';
 import { PostEntity } from './entity/post.entity.js';
 import { PostMediaEntity } from './entity/post-media.entity.js';
@@ -44,6 +45,7 @@ interface ToggleResult<T> {
 
 interface PostSearchFilters {
     userId?: string;
+    username?: string;
     text?: string;
     createdAfter?: Date;
     createdBefore?: Date;
@@ -150,6 +152,11 @@ export class PostService {
         cachedUser?: UserEntity
     ) {
         const { page, limit, offset } = normalizePagination(options);
+
+        if (viewer?.id && (await BlockService.isBlockedBetween(viewer.id, userId))) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'User not found');
+        }
+
         const user = cachedUser ?? (await getUserProfileById(userId));
 
         const { rows, count } = await PostEntity.findAndCountAll({
@@ -182,22 +189,34 @@ export class PostService {
 
     static async getFeed(currentUser: UserEntity, options: PaginationOptions = {}) {
         const { page, limit } = normalizePagination(options);
+        const blockedUserIds = await BlockService.getBlockedUserIdsFor(currentUser.id);
         const seenEntries = await PostViewEntity.findAll({
             where: { userId: currentUser.id },
             attributes: ['postId'],
         });
         const seenPostIds = new Set<string>(seenEntries.map((entry) => entry.postId));
-        const followingIdsList = await getAllFollowingIds(currentUser.id);
+        let followingIdsList = await getAllFollowingIds(currentUser.id);
+        if (blockedUserIds.length) {
+            const blockedSet = new Set(blockedUserIds);
+            followingIdsList = followingIdsList.filter((id) => !blockedSet.has(id));
+        }
         const posts: PostEntity[] = [];
         const collectedPostIds = new Set<string>();
 
         if (followingIdsList.length) {
-            const unseenFollowWhere: any = {
-                userId: { [Op.in]: followingIdsList },
-            };
-            if (seenPostIds.size) {
-                unseenFollowWhere.id = { [Op.notIn]: Array.from(seenPostIds) };
+            const unseenFollowConditions: any[] = [
+                { userId: { [Op.in]: followingIdsList } },
+            ];
+            if (blockedUserIds.length) {
+                unseenFollowConditions.push({ userId: { [Op.notIn]: blockedUserIds } });
             }
+            if (seenPostIds.size) {
+                unseenFollowConditions.push({ id: { [Op.notIn]: Array.from(seenPostIds) } });
+            }
+
+            const unseenFollowWhere: any = unseenFollowConditions.length > 1
+                ? { [Op.and]: unseenFollowConditions }
+                : unseenFollowConditions[0];
 
             const unseenFollowed = await PostEntity.findAll({
                 where: unseenFollowWhere,
@@ -225,6 +244,9 @@ export class PostService {
             if (followingIdsList.length) {
                 conditions.push({ userId: { [Op.notIn]: followingIdsList } });
             }
+            if (blockedUserIds.length) {
+                conditions.push({ userId: { [Op.notIn]: blockedUserIds } });
+            }
 
             const unseenOthers = await PostEntity.findAll({
                 where: conditions.length ? { [Op.and]: conditions } : {},
@@ -247,7 +269,9 @@ export class PostService {
 
             if (seenPoolIds.length) {
                 const seenPosts = await PostEntity.findAll({
-                    where: { id: { [Op.in]: seenPoolIds } },
+                    where: blockedUserIds.length
+                        ? { [Op.and]: [{ id: { [Op.in]: seenPoolIds } }, { userId: { [Op.notIn]: blockedUserIds } }] }
+                        : { id: { [Op.in]: seenPoolIds } },
                     include: POST_BASE_INCLUDE,
                     order: sequelize.random(),
                     limit: remaining,
@@ -454,12 +478,15 @@ export class PostService {
     static async getSavedPosts(currentUser: UserEntity, options: PaginationOptions = {}) {
         const { page, limit, offset } = normalizePagination(options);
 
+        const blockedUserIds = await BlockService.getBlockedUserIdsFor(currentUser.id);
+
         const { rows, count } = await PostSaveEntity.findAndCountAll({
             where: { userId: currentUser.id },
             include: [
                 {
                     model: PostEntity,
                     as: 'post',
+                    ...(blockedUserIds.length ? { where: { userId: { [Op.notIn]: blockedUserIds } } } : {}),
                     include: POST_BASE_INCLUDE,
                 },
             ],
@@ -482,39 +509,72 @@ export class PostService {
     static async searchPosts(viewer: UserEntity | null, filters: PostSearchFilters = {}, options: PaginationOptions = {}) {
         const { page, limit, offset } = normalizePagination(options);
 
+        const viewerId = viewer?.id ?? null;
+        const blockedUserIds = viewerId ? await BlockService.getBlockedUserIdsFor(viewerId) : [];
+
         if (filters.createdAfter && filters.createdBefore && filters.createdAfter > filters.createdBefore) {
             throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'createdAfter must be before createdBefore');
         }
 
-        const where: Record<string, any> = {};
+        const andConditions: any[] = [];
+
         if (filters.userId) {
-            where.userId = filters.userId;
+            if (viewerId && blockedUserIds.includes(filters.userId)) {
+                return buildPaginatedResponse([], 0, page, limit);
+            }
+            andConditions.push({ userId: filters.userId });
+        } else if (viewerId && blockedUserIds.length) {
+            andConditions.push({ userId: { [Op.notIn]: blockedUserIds } });
         }
 
-        if (filters.text) {
-            const sanitizedText = filters.text.trim();
-            if (sanitizedText) {
-                where.text = { [Op.iLike]: `%${sanitizedText}%` };
-            }
+        const rawText = filters.text?.trim() ?? '';
+        if (rawText) {
+            const like = { [Op.iLike]: `%${rawText}%` };
+            // Search on both post text and author username (name)
+            andConditions.push({
+                [Op.or]: [
+                    { text: like },
+                    { '$author.name$': like },
+                ],
+            });
         }
 
         if (filters.createdAfter || filters.createdBefore) {
-            where.createdAt = {
-                ...(filters.createdAfter ? { [Op.gte]: filters.createdAfter } : {}),
-                ...(filters.createdBefore ? { [Op.lte]: filters.createdBefore } : {}),
-            };
+            andConditions.push({
+                createdAt: {
+                    ...(filters.createdAfter ? { [Op.gte]: filters.createdAfter } : {}),
+                    ...(filters.createdBefore ? { [Op.lte]: filters.createdBefore } : {}),
+                },
+            });
         }
+
+        const where: Record<string, any> = andConditions.length ? { [Op.and]: andConditions } : {};
+
+        const include = POST_BASE_INCLUDE.map((inc) => {
+            if (inc?.as === 'author') {
+                const username = filters.username?.trim();
+                if (username) {
+                    return {
+                        ...inc,
+                        where: {
+                            name: { [Op.iLike]: `%${username}%` },
+                        },
+                        required: true,
+                    };
+                }
+            }
+            return { ...inc };
+        });
 
         const { rows, count } = await PostEntity.findAndCountAll({
             where,
-            include: POST_BASE_INCLUDE,
+            include,
             order: [['createdAt', 'DESC']],
             offset,
             limit,
         });
 
         const postIds = rows.map((post) => post.id);
-        const viewerId = viewer?.id ?? null;
         const likedIds = viewerId ? await getLikedPostIds(viewerId, postIds) : new Set<string>();
         const savedIds = viewerId ? await getSavedPostIds(viewerId, postIds) : new Set<string>();
         const authorIds = rows.map((post) => post.userId);
@@ -537,6 +597,9 @@ export class PostService {
         }
 
         const viewerId = viewer?.id ?? null;
+        if (viewerId && (await BlockService.isBlockedBetween(viewerId, post.userId))) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Post not found');
+        }
         const likedIds = viewerId ? await getLikedPostIds(viewerId, [postId]) : new Set<string>();
         const savedIds = viewerId ? await getSavedPostIds(viewerId, [postId]) : new Set<string>();
         const followingIds = viewerId ? await getFollowingIdsAmong(viewerId, [post.userId]) : new Set<string>();
@@ -551,7 +614,8 @@ export class PostService {
 
 export class PostCommentService {
     static async createComment(postId: string, currentUser: UserEntity, payload: CommentPayload = {}) {
-        await ensurePostExists(postId);
+        const postAuthorId = await getPostAuthorIdOrThrow(postId);
+        await BlockService.assertNotBlockedBetween(currentUser.id, postAuthorId);
         const normalizedContent = normalizeCommentContent(payload.content);
         const mediaIds = sanitizeMediaIds(payload.mediaIds);
 
@@ -599,7 +663,8 @@ export class PostCommentService {
     }
 
     static async createReply(postId: string, commentId: string, currentUser: UserEntity, payload: CommentPayload = {}) {
-        await ensurePostExists(postId);
+        const postAuthorId = await getPostAuthorIdOrThrow(postId);
+        await BlockService.assertNotBlockedBetween(currentUser.id, postAuthorId);
         const parent = await PostCommentEntity.findOne({ where: { id: commentId, postId } });
         if (!parent) {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Parent comment not found');
@@ -652,10 +717,18 @@ export class PostCommentService {
     }
 
     static async listComments(postId: string, currentUser: UserEntity, options: PaginationOptions = {}) {
-        await ensurePostExists(postId);
+        const postAuthorId = await getPostAuthorIdOrThrow(postId);
+        if (await BlockService.isBlockedBetween(currentUser.id, postAuthorId)) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Post not found');
+        }
+
+        const blockedUserIds = await BlockService.getBlockedUserIdsFor(currentUser.id);
         const { page, limit, offset } = normalizePagination(options);
 
-        const topLevelWhere = { postId, parentId: null } as const;
+        const topLevelWhere: any = { postId, parentId: null };
+        if (blockedUserIds.length) {
+            topLevelWhere.userId = { [Op.notIn]: blockedUserIds };
+        }
 
         try {
             // 1) Fetch top-level comments and total count concurrently
@@ -676,7 +749,9 @@ export class PostCommentService {
 
             if (topIds.length) {
                 const replies = await PostCommentEntity.findAll({
-                    where: { parentId: { [Op.in]: topIds } },
+                    where: blockedUserIds.length
+                        ? { [Op.and]: [{ parentId: { [Op.in]: topIds } }, { userId: { [Op.notIn]: blockedUserIds } }] }
+                        : { parentId: { [Op.in]: topIds } },
                     include: COMMENT_INCLUDE,
                     order: [['createdAt', 'DESC']],
                 });
@@ -979,6 +1054,14 @@ async function ensurePostExists(postId: string) {
     if (!exists) {
         throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Post not found');
     }
+}
+
+async function getPostAuthorIdOrThrow(postId: string): Promise<string> {
+    const post = await PostEntity.findByPk(postId, { attributes: ['id', 'userId'] });
+    if (!post) {
+        throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Post not found');
+    }
+    return post.userId;
 }
 
 async function ensureCommentExists(commentId: string) {

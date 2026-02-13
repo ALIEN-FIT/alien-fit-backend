@@ -5,14 +5,23 @@ import {
     toggleFollowController,
     listFollowersController,
     listFollowingController,
+    listMyFollowsController,
 } from './follow.controller.js';
 import {
     toggleFollowSchema,
     listFollowersSchema,
     listFollowingSchema,
+    listMyFollowsSchema,
 } from './follow.validation.js';
 
 export const followRouterV1 = express.Router();
+
+followRouterV1.get(
+    '/me',
+    auth,
+    validateRequest(listMyFollowsSchema),
+    listMyFollowsController,
+);
 
 followRouterV1.post(
     '/:userId/toggle',

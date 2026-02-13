@@ -66,6 +66,7 @@ export async function searchPostsController(req: Request, res: Response) {
 
     const filters = {
         userId: toOptionalString(req.query.userId),
+        username: toOptionalString(req.query.username),
         text: toOptionalString(req.query.text),
         createdAfter: parseDateFromQuery(req.query.createdAfter),
         createdBefore: parseDateFromQuery(req.query.createdBefore),

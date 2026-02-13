@@ -5,6 +5,7 @@ import { HttpResponseError } from '../../../utils/appError.js';
 import { UserEntity, UserFollowEntity } from '../../user/v1/entity/user.entity.js';
 import { UserService } from '../../user/v1/user.service.js';
 import { MediaEntity } from '../../media/v1/model/media.model.js';
+import { BlockService } from '../../block/v1/block.service.js';
 
 interface PaginationOptions {
     page?: number;
@@ -24,6 +25,8 @@ export class FollowService {
         if (currentUser.id === targetUserId) {
             throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'You cannot follow yourself');
         }
+
+        await BlockService.assertNotBlockedBetween(currentUser.id, targetUserId);
 
         const targetUser = await UserService.getUserById(targetUserId.toString());
 
@@ -73,12 +76,20 @@ export class FollowService {
         const targetUser = await UserService.getUserById(targetUserId);
         const { page, limit, offset } = normalizePagination(options);
 
+        const viewerId = viewer?.id ?? null;
+        if (viewerId && (await BlockService.isBlockedBetween(viewerId, targetUserId))) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'User not found');
+        }
+
+        const blockedUserIds = viewerId ? await BlockService.getBlockedUserIdsFor(viewerId) : [];
+
         const { rows, count } = await UserFollowEntity.findAndCountAll({
             where: { followingId: targetUserId },
             include: [
                 {
                     model: UserEntity,
                     as: 'follower',
+                    ...(blockedUserIds.length ? { where: { id: { [Op.notIn]: blockedUserIds } } } : {}),
                     include: [
                         { model: MediaEntity, as: 'image' },
                         { model: MediaEntity, as: 'profileBackgroundImage' },
@@ -95,7 +106,6 @@ export class FollowService {
             .map((row) => row.get('follower') as UserEntity | undefined)
             .filter((user): user is UserEntity => Boolean(user));
 
-        const viewerId = viewer?.id ?? null;
         const viewerFollowing = viewerId ? await getFollowingSet(viewerId, followers.map((f) => f.id)) : new Set<string>();
         const viewerFollowsTarget = viewerId ? await isUserFollowing(viewerId, targetUserId) : false;
 
@@ -120,12 +130,20 @@ export class FollowService {
         const targetUser = await UserService.getUserById(targetUserId);
         const { page, limit, offset } = normalizePagination(options);
 
+        const viewerId = viewer?.id ?? null;
+        if (viewerId && (await BlockService.isBlockedBetween(viewerId, targetUserId))) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'User not found');
+        }
+
+        const blockedUserIds = viewerId ? await BlockService.getBlockedUserIdsFor(viewerId) : [];
+
         const { rows, count } = await UserFollowEntity.findAndCountAll({
             where: { followerId: targetUserId },
             include: [
                 {
                     model: UserEntity,
                     as: 'following',
+                    ...(blockedUserIds.length ? { where: { id: { [Op.notIn]: blockedUserIds } } } : {}),
                     include: [
                         { model: MediaEntity, as: 'image' },
                         { model: MediaEntity, as: 'profileBackgroundImage' },
@@ -142,7 +160,6 @@ export class FollowService {
             .map((row) => row.get('following') as UserEntity | undefined)
             .filter((user): user is UserEntity => Boolean(user));
 
-        const viewerId = viewer?.id ?? null;
         const viewerFollowing = viewerId ? await getFollowingSet(viewerId, following.map((f) => f.id)) : new Set<string>();
         const viewerFollowsTarget = viewerId ? await isUserFollowing(viewerId, targetUserId) : false;
 

@@ -32,6 +32,7 @@ export const feedSchema = paginationQuerySchema;
 
 export const searchPostsSchema = paginationQuerySchema.keys({
     userId: uuidSchema,
+    username: Joi.string().trim().min(1).max(255),
     text: Joi.string().trim().min(1).max(5000),
     createdAfter: Joi.date().iso(),
     createdBefore: Joi.date().iso(),
