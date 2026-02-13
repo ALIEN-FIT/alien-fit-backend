@@ -50,13 +50,13 @@ COPY --from=builder /app/.sequelizerc ./.sequelizerc
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
-# RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD wget --spider -q http://localhost:3000/health/ready || exit 1
 
-# ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 CMD ["node", "dist/index.js"]
