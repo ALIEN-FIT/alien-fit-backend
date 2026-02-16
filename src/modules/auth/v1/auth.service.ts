@@ -9,7 +9,6 @@ import { UserService } from '../../user/v1/user.service.js';
 import { env } from 'process';
 import { otpService } from '../../otp/v1/otp.service.js';
 import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
-import { addDays } from '../../../utils/date.utils.js';
 import { AdminSettingsService } from '../../admin-settings/v1/admin-settings.service.js';
 
 const DEFAULT_FREE_DAYS = parseInt(process.env.DEFAULT_FREE_SUBSCRIPTION_DAYS || '7', 10);
