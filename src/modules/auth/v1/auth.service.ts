@@ -177,6 +177,12 @@ export class AuthService {
         }
 
         const user = await UserService.getUserById(decoded._id);
+
+        if (user.isBlocked) {
+            await session.destroy();
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Account is blocked');
+        }
+
         const newAccessToken = user.generateAuthToken(session.id.toString());
         const newRefreshToken = await user.generateRefreshToken(session.id.toString());
 

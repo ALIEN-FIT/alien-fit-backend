@@ -42,5 +42,10 @@ export async function authenticateAccessToken(accessToken?: string): Promise<Aut
         throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Session mismatch');
     }
 
+    if (user.isBlocked) {
+        await session.destroy();
+        throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Account is blocked');
+    }
+
     return { user, session };
 }

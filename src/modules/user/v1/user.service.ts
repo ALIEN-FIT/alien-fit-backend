@@ -6,6 +6,7 @@ import { ForeignKeyConstraintError, Op } from 'sequelize';
 import { MediaEntity } from '../../media/v1/model/media.model.js';
 import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
 import { SubscriptionEntity } from '../../subscription/v1/entity/subscription.entity.js';
+import { UserSessionEntity } from '../../user-session/v1/entity/user-session.entity.js';
 
 
 interface PaginateOptions {
@@ -75,10 +76,17 @@ export class UserService {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'User not found');
         }
 
+        const wasBlocked = user.isBlocked;
+
         await validateMediaIdIfProvided(updateData.imageId, 'Image not found');
         await validateMediaIdIfProvided(updateData.profileBackgroundImageId, 'Profile background image not found');
 
         await user.update(updateData);
+
+        if (!wasBlocked && updateData.isBlocked === true) {
+            await UserSessionEntity.destroy({ where: { userId: user.id } });
+        }
+
         return this.getUserById(user.id.toString());
     }
 
