@@ -13,6 +13,8 @@
     "lint:fix": "eslint . --fix",
     "seed": "node --loader ts-node/esm ./src/database/seed/run-seed.ts",
     "migration:create": "node script/generate-migration.cjs",
+    "migration:generate:entities": "npx tsx script/generate-entity-migrations.ts",
+    "migration:verify-schema": "npx tsx script/verify-schema-sync.ts",
     "migration:up": "sequelize-cli db:migrate",
     "migration:down": "sequelize-cli db:migrate:undo",
     "migration:down:all": "sequelize-cli db:migrate:undo:all",

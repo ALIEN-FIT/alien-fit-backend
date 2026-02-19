@@ -3,6 +3,12 @@
 /** @type {import('sequelize').Migration} */
 module.exports = {
     async up(queryInterface, Sequelize) {
+        const existingTablesRaw = await queryInterface.showAllTables();
+        const existingTables = existingTablesRaw.map((table) => typeof table === 'string' ? table : table.tableName);
+        if (existingTables.includes('user_blocks')) {
+            return;
+        }
+
         await queryInterface.createTable('user_blocks', {
             id: {
                 type: Sequelize.UUID,

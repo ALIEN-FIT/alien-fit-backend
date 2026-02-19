@@ -1,14 +1,29 @@
 import { StatusCodes } from 'http-status-codes';
 import { Request, Response } from 'express';
 import { UserProfileService } from './user-profile.service.js';
+import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
 
 export async function getUserProfileController(req: Request, res: Response): Promise<void> {
   const userId = req.params.userId || req.user.id;
-  const profile = await UserProfileService.getUserProfile(userId);
+  const [profile, subscriptionStatus] = await Promise.all([
+    UserProfileService.getUserProfile(userId),
+    SubscriptionService.getStatus(userId.toString()),
+  ]);
 
   res.status(StatusCodes.OK).json({
     status: 'success',
-    data: { profile }
+    data: {
+      profile,
+      subscription: {
+        isSubscribed: subscriptionStatus.isSubscribed,
+        isFreeTier: subscriptionStatus.isFreeTier,
+        planType: subscriptionStatus.planType,
+        capabilities: subscriptionStatus.capabilities,
+        profileUpdateRequired: subscriptionStatus.profileUpdateRequired,
+        startDate: subscriptionStatus.subscription?.startDate ?? null,
+        endDate: subscriptionStatus.subscription?.endDate ?? null,
+      },
+    }
   });
 }
 

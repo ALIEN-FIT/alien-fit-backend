@@ -4,12 +4,19 @@ import { UserService } from '../../user/v1/user.service.js';
 import { SubscriptionRepository } from './subscription.repository.js';
 import { SubscriptionEntity } from './entity/subscription.entity.js';
 import { addDays } from '../../../utils/date.utils.js';
+import { getCapabilitiesForPlanType, SUBSCRIPTION_PLAN_TYPE_SET, SubscriptionPlanType } from '../../subscription-packages/v1/subscription-plan-type.js';
 
 const SUBSCRIPTION_CYCLE_DAYS = 30;
 
 interface SubscriptionStatus {
     isSubscribed: boolean;
     profileUpdateRequired: boolean;
+    isFreeTier: boolean;
+    planType: SubscriptionPlanType;
+    capabilities: {
+        canAccessDiet: boolean;
+        canAccessTraining: boolean;
+    };
     subscription: SubscriptionEntity | null;
 }
 
@@ -41,6 +48,27 @@ async function hydrateSubscription(subscription: SubscriptionEntity | null): Pro
     return subscription;
 }
 
+function normalizePlanType(planType: unknown): SubscriptionPlanType {
+    const normalized = String(planType ?? 'both').trim().toLowerCase();
+    if (SUBSCRIPTION_PLAN_TYPE_SET.has(normalized)) {
+        return normalized as SubscriptionPlanType;
+    }
+    return 'both';
+}
+
+function resolveStatusEntitlements(subscription: SubscriptionEntity | null, isSubscribed: boolean) {
+    const isFreeTier = !isSubscribed || Boolean(subscription?.isFree);
+    const planType = isFreeTier
+        ? 'both'
+        : normalizePlanType(subscription?.planType);
+
+    return {
+        isFreeTier,
+        planType,
+        capabilities: getCapabilitiesForPlanType(planType),
+    };
+}
+
 export class SubscriptionService {
     static async activateFreeSubscription(userId: string, freeDays: number): Promise<SubscriptionEntity> {
         await UserService.getUserById(userId);
@@ -52,6 +80,7 @@ export class SubscriptionService {
             isActive: true,
             isFree: true,
             freeDays,
+            planType: 'both',
             startDate,
             endDate,
             nextProfileUpdateDue: calculateNextProfileDue(startDate),
@@ -60,10 +89,11 @@ export class SubscriptionService {
         return hydrateSubscription(subscription) as Promise<SubscriptionEntity>;
     }
 
-    static async activateSubscription(userId: string, cycles = 1): Promise<SubscriptionEntity> {
+    static async activateSubscription(userId: string, cycles = 1, planType: SubscriptionPlanType = 'both'): Promise<SubscriptionEntity> {
         await UserService.getUserById(userId);
         const startDate = new Date();
         const endDate = addDays(startDate, SUBSCRIPTION_CYCLE_DAYS * cycles);
+        const normalizedPlanType = normalizePlanType(planType);
 
         const existing = await SubscriptionRepository.findByUserId(userId);
         const nextProfileUpdateDue = existing?.lastProfileUpdateAt
@@ -74,6 +104,7 @@ export class SubscriptionService {
             isSubscribed: true,
             isActive: true,
             isFree: false,
+            planType: normalizedPlanType,
             startDate,
             endDate,
             nextProfileUpdateDue,
@@ -82,17 +113,19 @@ export class SubscriptionService {
         return hydrateSubscription(subscription) as Promise<SubscriptionEntity>;
     }
 
-    static async renewSubscription(userId: string, cycles = 1): Promise<SubscriptionEntity> {
+    static async renewSubscription(userId: string, cycles = 1, planType?: SubscriptionPlanType): Promise<SubscriptionEntity> {
         await UserService.getUserById(userId);
         const now = new Date();
         const existing = await SubscriptionRepository.findByUserId(userId);
         const baseDate = existing?.endDate && existing.endDate > now ? existing.endDate : now;
         const endDate = addDays(baseDate, SUBSCRIPTION_CYCLE_DAYS * cycles);
+        const normalizedPlanType = normalizePlanType(planType ?? existing?.planType ?? 'both');
 
         const subscription = await SubscriptionRepository.upsert(userId, {
             isSubscribed: true,
             isFree: false,
             isActive: true,
+            planType: normalizedPlanType,
             startDate: now,
             endDate,
             nextProfileUpdateDue: existing?.lastProfileUpdateAt
@@ -112,6 +145,9 @@ export class SubscriptionService {
             return {
                 isSubscribed: false,
                 profileUpdateRequired: false,
+                isFreeTier: true,
+                planType: 'both',
+                capabilities: getCapabilitiesForPlanType('both'),
                 subscription: null,
             };
         }
@@ -121,10 +157,14 @@ export class SubscriptionService {
             (subscription.nextProfileUpdateDue
                 ? subscription.nextProfileUpdateDue.getTime() <= Date.now()
                 : false);
+        const entitlement = resolveStatusEntitlements(subscription, isActive);
 
         return {
             isSubscribed: isActive,
             profileUpdateRequired,
+            isFreeTier: entitlement.isFreeTier,
+            planType: entitlement.planType,
+            capabilities: entitlement.capabilities,
             subscription,
         };
     }
@@ -144,11 +184,12 @@ export class SubscriptionService {
         }
 
         const nextProfileUpdateDue = calculateNextProfileDue(updateDate);
+        const isActive = computeIsActive(subscription);
         await subscription.update({
             lastProfileUpdateAt: updateDate,
             nextProfileUpdateDue,
-            isSubscribed: computeIsActive(subscription),
-            isActive: computeIsActive(subscription),
+            isSubscribed: isActive,
+            isActive,
         });
         return subscription;
     }

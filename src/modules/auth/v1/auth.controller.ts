@@ -220,23 +220,27 @@ export async function getMeController(req: Request, res: Response): Promise<void
         getUserProfileOrNull(userId),
     ]);
 
-    // Check subscription warning (less than 3 days)
-    const subscriptionWarning = subscriptionStatus.subscription?.endDate
-        ? (subscriptionStatus.subscription.endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24) < 3
-        : false;
-
-    // Determine subscription type
-    const subscriptionType = subscriptionStatus.isSubscribed ? 'paid' : 'free';
+    const warningThresholdDays = 3;
+    const remainingDays = subscriptionStatus.subscription?.endDate
+        ? (subscriptionStatus.subscription.endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+        : null;
+    const warning = remainingDays !== null && remainingDays < warningThresholdDays;
 
     res.status(StatusCodes.OK).json({
         status: 'success',
         data: {
             user: user.toJSON(),
-            isSubscribed: subscriptionStatus.isSubscribed,
-            profileUpdateRequired: subscriptionStatus.profileUpdateRequired,
-            subscriptionStatus,
-            subscriptionType,
-            subscriptionWarning,
+            subscription: {
+                isSubscribed: subscriptionStatus.isSubscribed,
+                isFreeTier: subscriptionStatus.isFreeTier,
+                planType: subscriptionStatus.planType,
+                capabilities: subscriptionStatus.capabilities,
+                profileUpdateRequired: subscriptionStatus.profileUpdateRequired,
+                warning,
+                warningThresholdDays,
+                startDate: subscriptionStatus.subscription?.startDate ?? null,
+                endDate: subscriptionStatus.subscription?.endDate ?? null,
+            },
             profile,
         },
     });

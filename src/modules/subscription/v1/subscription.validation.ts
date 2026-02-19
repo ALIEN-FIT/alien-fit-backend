@@ -19,6 +19,7 @@ export const subscriptionRenewSchema = Joi.object({
 
 export const subscriptionCheckoutSchema = Joi.object({
     packageId: JoiCustomValidateObjectId('Package ID', true),
+    planType: Joi.string().valid('diet', 'training', 'both').required(),
     currency: Joi.string().trim().uppercase().pattern(/^[A-Z]{3,10}$/).required(),
     redirectionUrls: Joi.object({
         successUrl: Joi.string().uri().optional(),

@@ -45,6 +45,10 @@ export class DietPlanService {
         }
 
         await UserService.getUserById(userId);
+        const subscriptionStatus = await SubscriptionService.getStatus(userId);
+        if (!subscriptionStatus.capabilities.canAccessDiet) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'User subscription does not allow diet plans');
+        }
 
         const startDate = payload.startDate ? new Date(payload.startDate) : new Date();
         if (Number.isNaN(startDate.getTime())) {
@@ -76,11 +80,14 @@ export class DietPlanService {
             throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Not allowed to view this diet plan');
         }
 
-        // Check subscription status
         const subscriptionStatus = await SubscriptionService.getStatus(userId);
 
-        // If free subscription, return default plan if configured
-        if (subscriptionStatus.subscription?.isFree) {
+        if (!subscriptionStatus.capabilities.canAccessDiet) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Diet plan is not available for current subscription');
+        }
+
+        // Free-tier users get default plan if configured
+        if (subscriptionStatus.isFreeTier) {
             const defaultPlanId = await AdminSettingsService.getDefaultDietPlanId();
             if (defaultPlanId) {
                 const defaultPlan = await DietPlanRepository.findById(defaultPlanId);
