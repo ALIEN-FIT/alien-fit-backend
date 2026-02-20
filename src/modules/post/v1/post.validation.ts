@@ -34,6 +34,7 @@ export const searchPostsSchema = paginationQuerySchema.keys({
     userId: uuidSchema,
     username: Joi.string().trim().min(1).max(255),
     text: Joi.string().trim().min(1).max(5000),
+    scope: Joi.string().valid('posts', 'users', 'both').default('posts'),
     createdAfter: Joi.date().iso(),
     createdBefore: Joi.date().iso(),
 });
