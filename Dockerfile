@@ -36,7 +36,7 @@ WORKDIR /app
 RUN apk add --no-cache wget ffmpeg
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --omit=dev
 
 # Copy built application
 COPY --from=builder /app/dist ./dist
