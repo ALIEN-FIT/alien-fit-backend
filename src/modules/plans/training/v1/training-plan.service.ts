@@ -50,6 +50,10 @@ export class TrainingPlanService {
         }
 
         await UserService.getUserById(userId);
+        const subscriptionStatus = await SubscriptionService.getStatus(userId);
+        if (!subscriptionStatus.capabilities.canAccessTraining) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'User subscription does not allow training plans');
+        }
 
         const startDate = payload.startDate ? new Date(payload.startDate) : new Date();
         if (Number.isNaN(startDate.getTime())) {
@@ -78,11 +82,14 @@ export class TrainingPlanService {
             throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Not allowed to view this training plan');
         }
 
-        // Check subscription status
         const subscriptionStatus = await SubscriptionService.getStatus(userId);
 
-        // If free subscription, return default plan if configured
-        if (subscriptionStatus.subscription?.isFree) {
+        if (!subscriptionStatus.capabilities.canAccessTraining) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Training plan is not available for current subscription');
+        }
+
+        // Free-tier users get default plan if configured
+        if (subscriptionStatus.isFreeTier) {
             const defaultPlanId = await AdminSettingsService.getDefaultTrainingPlanId();
             if (defaultPlanId) {
                 const defaultPlan = await TrainingPlanRepository.findById(defaultPlanId);

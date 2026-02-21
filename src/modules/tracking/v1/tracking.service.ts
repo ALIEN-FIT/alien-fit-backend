@@ -207,7 +207,7 @@ export class TrackingService {
         const newWaterIntakeMl = currentWaterIntake + payload.amountMl;
 
         if (newWaterIntakeMl < 0) {
-            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Water intake cannot be negative. Current intake: ' + currentWaterIntake + 'ml');
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Water intake cannot be negative. Current intake:');
         }
 
         const waterIntakeRecords = tracking.waterIntakeRecords ?? [];

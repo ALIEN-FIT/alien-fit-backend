@@ -68,6 +68,7 @@ export async function searchPostsController(req: Request, res: Response) {
         userId: toOptionalString(req.query.userId),
         username: toOptionalString(req.query.username),
         text: toOptionalString(req.query.text),
+        scope: parseSearchScope(req.query.scope),
         createdAfter: parseDateFromQuery(req.query.createdAfter),
         createdBefore: parseDateFromQuery(req.query.createdBefore),
     };
@@ -243,4 +244,12 @@ function parseDateFromQuery(value: unknown): Date | undefined {
     }
     const parsed = new Date(stringValue);
     return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+function parseSearchScope(value: unknown): 'posts' | 'users' | 'both' | undefined {
+    const scope = toOptionalString(value)?.toLowerCase();
+    if (scope === 'posts' || scope === 'users' || scope === 'both') {
+        return scope;
+    }
+    return undefined;
 }

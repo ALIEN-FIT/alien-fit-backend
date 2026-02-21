@@ -48,11 +48,12 @@ export async function getSubscriptionStatusController(req: Request, res: Respons
 
 export async function createSubscriptionCheckoutController(req: Request, res: Response): Promise<void> {
     const userId = req.user!.id.toString();
-    const { packageId, currency, redirectionUrls } = req.body;
+    const { packageId, planType, currency, redirectionUrls } = req.body;
 
     const payment = await SubscriptionPaymentService.checkout({
         userId,
         packageId,
+        planType,
         currency,
         redirectionUrls,
     });
@@ -63,6 +64,7 @@ export async function createSubscriptionCheckoutController(req: Request, res: Re
             payment: {
                 id: payment.id,
                 status: payment.status,
+                planType: payment.planType,
                 currency: payment.currency,
                 amount: payment.amount,
                 invoiceId: payment.invoiceId,

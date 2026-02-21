@@ -1,12 +1,16 @@
 import { DataTypes, Model } from 'sequelize';
 import { sequelize } from '../../../../database/db-config.js';
+import { SubscriptionPlanType } from '../subscription-plan-type.js';
 
-export type SubscriptionPackagePrices = Record<string, number>;
+export type SubscriptionPackageTypePrices = Record<string, number>;
+
+export type SubscriptionPackagePrices = Partial<Record<SubscriptionPlanType, SubscriptionPackageTypePrices>>;
 
 export class SubscriptionPackageEntity extends Model {
     declare id: string;
     declare name: string;
     declare description: string | null;
+    declare planTypes: SubscriptionPlanType[];
     declare prices: SubscriptionPackagePrices;
     declare features: string[];
     declare cycles: number;
@@ -31,8 +35,14 @@ SubscriptionPackageEntity.init(
             type: DataTypes.TEXT,
             allowNull: true,
         },
+        planTypes: {
+            type: DataTypes.JSON,
+            allowNull: false,
+            defaultValue: ['both'],
+        },
         prices: {
-            // Dynamic currencies. Example: { "EGP": 299, "USD": 9.99 }
+            // Per plan-type dynamic currencies. Example:
+            // { "diet": { "EGP": 299, "USD": 9.99 }, "both": { "EGP": 499, "USD": 14.99 } }
             type: DataTypes.JSON,
             allowNull: false,
             defaultValue: {},

@@ -4,13 +4,15 @@ import { createFawaterakHttpClient, getFawaterakApiKeyForWebhookVerification } f
 import { HttpResponseError } from '../../../utils/appError.js';
 import { UserService } from '../../user/v1/user.service.js';
 import { SubscriptionService } from './subscription.service.js';
-import { SubscriptionPackageService } from '../../subscription-packages/v1/subscription-package.service.js';
+import { resolvePackageAmount, SubscriptionPackageService } from '../../subscription-packages/v1/subscription-package.service.js';
 import { SubscriptionPaymentEntity } from './entity/subscription-payment.entity.js';
 import { SubscriptionPaymentRepository } from './subscription-payment.repository.js';
+import { SubscriptionPlanType } from '../../subscription-packages/v1/subscription-plan-type.js';
 
 export interface SubscriptionCheckoutInput {
     userId: string;
     packageId: string;
+    planType: SubscriptionPlanType;
     currency: string;
     redirectionUrls?: {
         successUrl?: string;
@@ -69,15 +71,13 @@ export class SubscriptionPaymentService {
         const pkg = await SubscriptionPackageService.requireActiveById(input.packageId);
 
         const currency = String(input.currency).trim().toUpperCase();
-        const prices = (pkg.prices ?? {}) as Record<string, number>;
-        const amount = prices[currency];
-        if (amount === undefined) {
-            throw new HttpResponseError(StatusCodes.UNPROCESSABLE_ENTITY, `Package has no price for currency ${currency}`);
-        }
+        const planType = String(input.planType).trim().toLowerCase() as SubscriptionPlanType;
+        const amount = resolvePackageAmount(pkg, planType, currency);
 
         const payment = await SubscriptionPaymentRepository.create({
             userId: user.id,
             packageId: pkg.id,
+            planType,
             provider: 'fawaterak',
             status: 'pending',
             currency,
@@ -105,6 +105,7 @@ export class SubscriptionPaymentService {
                 paymentId: payment.id,
                 userId: user.id,
                 packageId: pkg.id,
+                planType,
             },
         };
 
@@ -179,9 +180,9 @@ export class SubscriptionPaymentService {
             const pkg = await SubscriptionPackageService.requireActiveById(existing.packageId);
             const status = await SubscriptionService.getStatus(existing.userId);
             if (status.isSubscribed) {
-                await SubscriptionService.renewSubscription(existing.userId, pkg.cycles);
+                await SubscriptionService.renewSubscription(existing.userId, pkg.cycles, existing.planType);
             } else {
-                await SubscriptionService.activateSubscription(existing.userId, pkg.cycles);
+                await SubscriptionService.activateSubscription(existing.userId, pkg.cycles, existing.planType);
             }
 
             return { payment: existing, subscriptionActivated: true };

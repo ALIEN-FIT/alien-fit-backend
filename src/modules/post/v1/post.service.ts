@@ -1,4 +1,4 @@
-import { Op, Transaction, UniqueConstraintError } from 'sequelize';
+import { col, Op, Transaction, UniqueConstraintError, where as sqlWhere } from 'sequelize';
 import { StatusCodes } from 'http-status-codes';
 import { sequelize } from '../../../database/db-config.js';
 import { HttpResponseError } from '../../../utils/appError.js';
@@ -47,6 +47,7 @@ interface PostSearchFilters {
     userId?: string;
     username?: string;
     text?: string;
+    scope?: 'posts' | 'users' | 'both';
     createdAfter?: Date;
     createdBefore?: Date;
 }
@@ -99,6 +100,17 @@ const COMMENT_MEDIA_INCLUDE = {
 };
 
 const COMMENT_INCLUDE = [COMMENT_AUTHOR_INCLUDE, COMMENT_MEDIA_INCLUDE];
+
+const USER_SEARCH_INCLUDE = [
+    {
+        model: MediaEntity,
+        as: 'image',
+    },
+    {
+        model: MediaEntity,
+        as: 'profileBackgroundImage',
+    },
+];
 
 interface CommentPayload {
     content?: string | null;
@@ -508,6 +520,9 @@ export class PostService {
 
     static async searchPosts(viewer: UserEntity | null, filters: PostSearchFilters = {}, options: PaginationOptions = {}) {
         const { page, limit, offset } = normalizePagination(options);
+        const scope = filters.scope ?? 'posts';
+        const searchPosts = scope === 'posts' || scope === 'both';
+        const searchUsers = scope === 'users' || scope === 'both';
 
         const viewerId = viewer?.id ?? null;
         const blockedUserIds = viewerId ? await BlockService.getBlockedUserIdsFor(viewerId) : [];
@@ -520,7 +535,11 @@ export class PostService {
 
         if (filters.userId) {
             if (viewerId && blockedUserIds.includes(filters.userId)) {
-                return buildPaginatedResponse([], 0, page, limit);
+                const emptyPosts = buildPaginatedResponse([], 0, page, limit);
+                return {
+                    ...emptyPosts,
+                    users: buildPaginatedResponse([], 0, page, limit),
+                };
             }
             andConditions.push({ userId: filters.userId });
         } else if (viewerId && blockedUserIds.length) {
@@ -530,11 +549,10 @@ export class PostService {
         const rawText = filters.text?.trim() ?? '';
         if (rawText) {
             const like = { [Op.iLike]: `%${rawText}%` };
-            // Search on both post text and author username (name)
             andConditions.push({
                 [Op.or]: [
                     { text: like },
-                    { '$author.name$': like },
+                    sqlWhere(col('author.name'), like),
                 ],
             });
         }
@@ -566,22 +584,67 @@ export class PostService {
             return { ...inc };
         });
 
-        const { rows, count } = await PostEntity.findAndCountAll({
-            where,
-            include,
-            order: [['createdAt', 'DESC']],
-            offset,
-            limit,
-        });
+        let postsResult: PaginatedResponse<any> = buildPaginatedResponse([], 0, page, limit);
+        if (searchPosts) {
+            const { rows, count } = await PostEntity.findAndCountAll({
+                where,
+                include,
+                distinct: true,
+                subQuery: false,
+                order: [['createdAt', 'DESC']],
+                offset,
+                limit,
+            });
 
-        const postIds = rows.map((post) => post.id);
-        const likedIds = viewerId ? await getLikedPostIds(viewerId, postIds) : new Set<string>();
-        const savedIds = viewerId ? await getSavedPostIds(viewerId, postIds) : new Set<string>();
-        const authorIds = rows.map((post) => post.userId);
-        const followingIds = viewerId ? await getFollowingIdsAmong(viewerId, authorIds) : new Set<string>();
+            const postIds = rows.map((post) => post.id);
+            const likedIds = viewerId ? await getLikedPostIds(viewerId, postIds) : new Set<string>();
+            const savedIds = viewerId ? await getSavedPostIds(viewerId, postIds) : new Set<string>();
+            const authorIds = rows.map((post) => post.userId);
+            const followingIds = viewerId ? await getFollowingIdsAmong(viewerId, authorIds) : new Set<string>();
 
-        const items = rows.map((post) => formatPost(post, viewerId, likedIds, savedIds, followingIds));
-        return buildPaginatedResponse(items, count, page, limit);
+            const items = rows.map((post) => formatPost(post, viewerId, likedIds, savedIds, followingIds));
+            postsResult = buildPaginatedResponse(items, count, page, limit);
+        }
+
+        let usersResult: PaginatedResponse<any> = buildPaginatedResponse([], 0, page, limit);
+        if (searchUsers) {
+            const userAndConditions: any[] = [];
+
+            if (blockedUserIds.length) {
+                userAndConditions.push({ id: { [Op.notIn]: blockedUserIds } });
+            }
+            if (filters.userId) {
+                userAndConditions.push({ id: filters.userId });
+            }
+            const username = filters.username?.trim();
+            if (username) {
+                userAndConditions.push({ name: { [Op.iLike]: `%${username}%` } });
+            }
+            if (rawText) {
+                userAndConditions.push({ name: { [Op.iLike]: `%${rawText}%` } });
+            }
+
+            const userWhere = userAndConditions.length ? { [Op.and]: userAndConditions } : {};
+
+            const { rows: userRows, count: userCount } = await UserEntity.findAndCountAll({
+                where: userWhere,
+                include: USER_SEARCH_INCLUDE,
+                order: [['createdAt', 'DESC']],
+                offset,
+                limit,
+            });
+
+            const userIds = userRows.map((user) => user.id);
+            const followingIds = viewerId ? await getFollowingIdsAmong(viewerId, userIds) : new Set<string>();
+            const userItems = userRows.map((user) => formatSearchUser(user, viewerId, followingIds));
+
+            usersResult = buildPaginatedResponse(userItems, userCount, page, limit);
+        }
+
+        return {
+            ...postsResult,
+            users: usersResult,
+        };
     }
 
     static async getPost(postId: string, viewer: UserEntity | null) {
@@ -1179,6 +1242,13 @@ function formatPost(
     if (plain.author) {
         plain.author.isFollowing = viewerId ? followingIds.has(plain.author.id) : false;
     }
+    return plain;
+}
+
+function formatSearchUser(user: UserEntity, viewerId: string | null, followingIds: Set<string>) {
+    const plain = user.get({ plain: true }) as any;
+    plain.isMine = viewerId ? plain.id === viewerId : false;
+    plain.isFollowing = viewerId ? followingIds.has(plain.id) : false;
     return plain;
 }
 

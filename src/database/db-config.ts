@@ -19,10 +19,6 @@ export const sequelize = isTestEnv
     })
     : new Sequelize(DB_URL, baseOptions);
 
-if (!isTestEnv) {
-    sequelize.sync({ alter: true });
-}
-
 export async function initializeDatabase() {
     try {
         await sequelize.authenticate();

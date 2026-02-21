@@ -1,6 +1,7 @@
 import { DataTypes, Model } from 'sequelize';
 import { sequelize } from '../../../../database/db-config.js';
 import { UserEntity } from '../../../user/v1/entity/user.entity.js';
+import { SubscriptionPlanType } from '../../../subscription-packages/v1/subscription-plan-type.js';
 
 export class SubscriptionEntity extends Model {
     declare id: string;
@@ -13,6 +14,7 @@ export class SubscriptionEntity extends Model {
     declare isActive: boolean;
     declare isFree: boolean;
     declare freeDays: number;
+    declare planType: SubscriptionPlanType;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -61,6 +63,11 @@ SubscriptionEntity.init(
         freeDays: {
             type: DataTypes.INTEGER,
             defaultValue: 0,
+        },
+        planType: {
+            type: DataTypes.STRING(20),
+            allowNull: false,
+            defaultValue: 'both',
         },
     },
     {

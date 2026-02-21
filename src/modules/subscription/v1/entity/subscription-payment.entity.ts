@@ -1,6 +1,7 @@
 import { DataTypes, Model } from 'sequelize';
 import { sequelize } from '../../../../database/db-config.js';
 import { UserEntity } from '../../../user/v1/entity/user.entity.js';
+import { SubscriptionPlanType } from '../../../subscription-packages/v1/subscription-plan-type.js';
 
 export type SubscriptionPaymentStatus = 'pending' | 'paid' | 'failed' | 'expired';
 
@@ -8,6 +9,7 @@ export class SubscriptionPaymentEntity extends Model {
     declare id: string;
     declare userId: string;
     declare packageId: string;
+    declare planType: SubscriptionPlanType;
 
     declare provider: 'fawaterak';
     declare status: SubscriptionPaymentStatus;
@@ -43,6 +45,11 @@ SubscriptionPaymentEntity.init(
         packageId: {
             type: DataTypes.UUID,
             allowNull: false,
+        },
+        planType: {
+            type: DataTypes.STRING(20),
+            allowNull: false,
+            defaultValue: 'both',
         },
         provider: {
             type: DataTypes.STRING(50),
@@ -91,6 +98,7 @@ SubscriptionPaymentEntity.init(
         indexes: [
             { fields: ['userId'] },
             { fields: ['packageId'] },
+            { fields: ['planType'] },
             { fields: ['status'] },
             { fields: ['invoiceId'], unique: true },
             { fields: ['invoiceKey'], unique: true },
