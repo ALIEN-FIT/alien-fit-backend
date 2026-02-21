@@ -14,9 +14,7 @@ echo "✅ Database is ready!"
 
 # Run migrations
 echo "📦 Running database migrations..."
-npm run migration:up
-
-if [ $? -eq 0 ]; then
+if npm run migration:up; then
   echo "✅ Migrations completed successfully!"
 else
   echo "⚠️  Migration failed or no pending migrations"
