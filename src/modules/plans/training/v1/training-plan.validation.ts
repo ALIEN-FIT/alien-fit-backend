@@ -39,6 +39,7 @@ const trainingPlanItemSchema = Joi.object({
 }).unknown(false);
 
 const trainingPlanDaySchema = Joi.object({
+    name: Joi.string().trim().min(1).required(),
     dayNumber: Joi.number().integer().min(1).max(7).optional(),
     items: Joi.array().items(trainingPlanItemSchema).required(),
 }).unknown(false);
