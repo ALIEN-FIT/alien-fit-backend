@@ -2,7 +2,9 @@ import { z } from 'zod';
 import dotenv from 'dotenv';
 
 
-dotenv.config();
+if (process.env.NODE_ENV !== 'production') {
+    dotenv.config();
+}
 
 const dbUriSchema = z.string().min(1).refine((value) => {
     if (value.startsWith('sqlite:')) {
