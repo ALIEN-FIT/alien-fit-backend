@@ -235,14 +235,17 @@ Example body:
 {
   "startDate": "2026-02-18T00:00:00.000Z",
   "recommendedWaterIntakeMl": 3000,
-  "days": [
-    { "dayNumber": 1, "meals": [] },
-    { "dayNumber": 2, "meals": [] },
-    { "dayNumber": 3, "meals": [] },
-    { "dayNumber": 4, "meals": [] },
-    { "dayNumber": 5, "meals": [] },
-    { "dayNumber": 6, "meals": [] },
-    { "dayNumber": 7, "meals": [] }
+  "meals": [
+    {
+      "mealName": "Meal 1 (Light Iftar – Pre Workout)",
+      "order": 1,
+      "text": "160g cooked white rice\n1 medium banana\n1 scoop whey protein\n2 medium dates"
+    },
+    {
+      "mealName": "Meal 2 (Post Workout)",
+      "order": 2,
+      "text": "200g grilled chicken breast\n250g cooked potatoes\nBig green salad\n1 tbsp olive oil"
+    }
   ]
 }
 ```

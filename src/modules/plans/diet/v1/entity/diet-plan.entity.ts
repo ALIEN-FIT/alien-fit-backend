@@ -27,15 +27,12 @@ export class DietPlanDayEntity extends Model {
 export class DietMealItemEntity extends Model {
     declare id: string;
     declare dayId: string;
-    declare mealName: string;
+    declare mealName: string | null;
     declare order: number;
-    declare foods: Array<{
-        name: string;
-        grams: number;
-        calories: number;
-        fats: number;
-        carbs: number;
-    }>;
+    // Stored as JSONB.
+    // New format (template text): [{ text: string }]
+    // Legacy format (structured foods): [{ name, grams, calories, fats, carbs }]
+    declare foods: Array<Record<string, unknown>>;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -129,7 +126,7 @@ DietMealItemEntity.init(
         },
         mealName: {
             type: DataTypes.STRING,
-            allowNull: false,
+            allowNull: true,
         },
         order: {
             type: DataTypes.INTEGER,

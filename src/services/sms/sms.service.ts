@@ -107,7 +107,7 @@ export class SMSService {
     }
 
     async sendOTP(phone: string, otp: string): Promise<boolean> {
-        const message = `Your AlienFit verification code is: ${otp}. Valid for 10 minutes.`;
+        const message = `Use ${otp} for the AlienFit App. Valid for 10 minutes.`;
         return this.sendSMS(phone, message);
     }
 }

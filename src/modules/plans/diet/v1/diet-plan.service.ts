@@ -5,33 +5,21 @@ import { UserService } from '../../../user/v1/user.service.js';
 import { DietPlanRepository } from './diet-plan.repository.js';
 import { DietPlanEntity } from './entity/diet-plan.entity.js';
 import { UserEntity } from '../../../user/v1/entity/user.entity.js';
-import { addWeeks, startOfDayUTC } from '../../../../utils/date.utils.js';
+import { addDays, startOfDayUTC } from '../../../../utils/date.utils.js';
 import { SubscriptionService } from '../../../subscription/v1/subscription.service.js';
 import { AdminSettingsService } from '../../../admin-settings/v1/admin-settings.service.js';
 
-interface FoodInput {
-    name: string;
-    grams: number;
-    calories: number;
-    fats: number;
-    carbs: number;
-}
-
 interface DietMealInput {
-    mealName: string;
+    mealName?: string;
     order: number;
-    foods: FoodInput[];
-}
-
-interface DietPlanDayInput {
-    dayNumber?: number;
-    meals: DietMealInput[];
+    text: string;
 }
 
 interface CreateDietPlanPayload {
     startDate?: string;
     recommendedWaterIntakeMl?: number;
-    days: DietPlanDayInput[];
+    meals?: DietMealInput[];
+    snacks?: DietMealInput[];
 }
 
 export class DietPlanService {
@@ -55,14 +43,18 @@ export class DietPlanService {
             throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Invalid startDate');
         }
         const normalizedStart = startOfDayUTC(startDate);
-        const endDate = addWeeks(normalizedStart, 4);
+        // 30-day plan (endDate is exclusive)
+        const endDate = addDays(normalizedStart, 30);
 
-        if (!Array.isArray(payload.days) || payload.days.length !== 7) {
-            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Template must include exactly 7 days');
+        const mealsInput = Array.isArray(payload.meals) ? payload.meals : [];
+        const snacksInput = Array.isArray(payload.snacks) ? payload.snacks : [];
+        if (mealsInput.length + snacksInput.length < 1) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Template must include at least 1 item in meals or snacks');
         }
 
-        const template = this.normalizeTemplate(payload.days);
-        const daysPayload = this.buildDaysPayload(normalizedStart, template);
+        const templateMeals = this.normalizeMeals(mealsInput);
+        const templateSnacks = this.normalizeMeals(snacksInput);
+        const daysPayload = this.buildDaysPayload(normalizedStart, templateMeals, templateSnacks);
 
         await DietPlanRepository.createPlan(
             userId,
@@ -104,50 +96,72 @@ export class DietPlanService {
         return plan;
     }
 
-    private static normalizeTemplate(days: DietPlanDayInput[]): Array<DietMealInput[]> {
-        const template: Array<DietMealInput[]> = Array.from({ length: 7 }, () => []);
-
-        days.forEach((day, index) => {
-            const position = day.dayNumber ? day.dayNumber - 1 : index;
-            if (position < 0 || position > 6) {
-                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'dayNumber must be between 1 and 7');
-            }
-            const meals = day.meals ?? [];
-            template[position] = meals.map((m) => ({
-                mealName: m.mealName,
-                order: m.order,
-                foods: m.foods.map((f) => ({
-                    name: f.name,
-                    grams: f.grams,
-                    calories: f.calories,
-                    fats: f.fats,
-                    carbs: f.carbs,
-                })),
-            }));
-        });
-
-        return template;
+    private static normalizeMeals(meals: DietMealInput[]): DietMealInput[] {
+        return (meals ?? []).map((m) => ({
+            mealName: m.mealName ? String(m.mealName).trim() : undefined,
+            order: Number(m.order),
+            text: String(m.text ?? '').trim(),
+        }));
     }
 
-    private static buildDaysPayload(startDate: Date, template: Array<DietMealInput[]>) {
-        return Array.from({ length: 28 }, (_, index) => {
+    private static buildDaysPayload(startDate: Date, templateMeals: DietMealInput[], templateSnacks: DietMealInput[]) {
+        return Array.from({ length: 30 }, (_, index) => {
             const date = new Date(startDate);
             date.setDate(startDate.getDate() + index);
-            const templateMeals = template[index % 7];
 
-            const meals = templateMeals
+            const usedKeys = new Set<string>();
+            const buildUniqueName = (baseName: string, order: number, suffixHint?: string) => {
+                let candidate = baseName;
+                const keyOf = (name: string) => `${name}::${order}`;
+                if (!usedKeys.has(keyOf(candidate))) {
+                    usedKeys.add(keyOf(candidate));
+                    return candidate;
+                }
+
+                let counter = 1;
+                while (true) {
+                    const suffix = suffixHint ? ` (${suffixHint}${counter > 1 ? ` ${counter}` : ''})` : ` (${counter + 1})`;
+                    candidate = `${baseName}${suffix}`;
+                    if (!usedKeys.has(keyOf(candidate))) {
+                        usedKeys.add(keyOf(candidate));
+                        return candidate;
+                    }
+                    counter += 1;
+                }
+            };
+
+            const meals = (templateMeals ?? [])
+                .slice()
                 .sort((a, b) => a.order - b.order)
                 .map((m) => ({
-                    mealName: m.mealName,
+                    mealName: buildUniqueName(
+                        m.mealName && m.mealName.length > 0 ? m.mealName : `Meal ${m.order}`,
+                        m.order,
+                    ),
                     order: m.order,
-                    foods: m.foods,
+                    foods: [{ text: m.text, itemType: 'MEAL' }],
                 }));
+
+            const snacks = (templateSnacks ?? [])
+                .slice()
+                .sort((a, b) => a.order - b.order)
+                .map((m) => ({
+                    mealName: buildUniqueName(
+                        m.mealName && m.mealName.length > 0 ? m.mealName : `Snack ${m.order}`,
+                        m.order,
+                        'Snack',
+                    ),
+                    order: m.order,
+                    foods: [{ text: m.text, itemType: 'SNACK' }],
+                }));
+
+            const allItems = [...meals, ...snacks];
 
             return {
                 dayIndex: index + 1,
                 date,
                 weekNumber: Math.floor(index / 7) + 1,
-                meals,
+                meals: allItems,
             };
         });
     }

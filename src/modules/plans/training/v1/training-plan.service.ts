@@ -145,10 +145,35 @@ export class TrainingPlanService {
             if (position < 0 || position > 6) {
                 throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'dayNumber must be between 1 and 7');
             }
-            template[position] = day.items?.map((item) => this.normalizeItem(item, videoMap)) ?? [];
+            const normalizedItems = day.items?.map((item) => this.normalizeItem(item, videoMap)) ?? [];
+            this.assertCircuitGroupsAreValid(normalizedItems);
+            template[position] = normalizedItems;
         });
 
         return template;
+    }
+
+    private static assertCircuitGroupsAreValid(items: NormalizedTrainingPlanItem[]) {
+        const circuitGroups = new Map<string, number>();
+        for (const item of items) {
+            if (item.itemType !== 'CIRCUIT') {
+                continue;
+            }
+            const key = (item.circuitGroup ?? '').trim();
+            circuitGroups.set(key, (circuitGroups.get(key) ?? 0) + 1);
+        }
+
+        for (const [group, count] of circuitGroups.entries()) {
+            if (!group) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'CIRCUIT items must include circuitGroup');
+            }
+            if (count < 3) {
+                throw new HttpResponseError(
+                    StatusCodes.BAD_REQUEST,
+                    `CIRCUIT group "${group}" must include at least 3 exercises (received ${count})`,
+                );
+            }
+        }
     }
 
     private static normalizeItem(
@@ -162,16 +187,39 @@ export class TrainingPlanService {
 
         const itemType = item.itemType ?? (item.isSuperset ? 'SUPERSET' : 'REGULAR');
 
+        if (!['REGULAR', 'SUPERSET', 'DROPSET', 'CIRCUIT'].includes(itemType)) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Invalid itemType: ${String(itemType)}`);
+        }
+
+        if (!Number.isFinite(item.sets) || item.sets < 1) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'sets must be a positive number');
+        }
+        if (!Number.isFinite(item.repeats) || item.repeats < 1) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'repeats must be a positive number');
+        }
+
         let supersetItems: SupersetItemInput[] | null = null;
         let extraVideos: Array<{ trainingVideoId: string }> | null = null;
         let dropsetConfig: { dropPercents: number[]; restSeconds?: number } | null = null;
         let circuitGroup: string | null = null;
 
         if (itemType === 'SUPERSET') {
+            if (!Array.isArray(item.supersetItems) || item.supersetItems.length < 1) {
+                throw new HttpResponseError(
+                    StatusCodes.BAD_REQUEST,
+                    'SUPERSET must include at least 2 exercises (provide supersetItems with length >= 1)',
+                );
+            }
             supersetItems = (item.supersetItems ?? []).map((superset) => {
                 const supersetVideo = videoMap.get(superset.trainingVideoId);
                 if (!supersetVideo) {
                     throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${superset.trainingVideoId}`);
+                }
+                if (!Number.isFinite(superset.sets) || superset.sets < 1) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'supersetItem.sets must be a positive number');
+                }
+                if (!Number.isFinite(superset.repeats) || superset.repeats < 1) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'supersetItem.repeats must be a positive number');
                 }
                 return {
                     trainingVideoId: superset.trainingVideoId,
@@ -187,9 +235,49 @@ export class TrainingPlanService {
                 return { trainingVideoId: ev.trainingVideoId };
             });
         } else if (itemType === 'DROPSET') {
-            dropsetConfig = item.dropsetConfig ?? null;
+            if (item.supersetItems?.length || item.extraVideos?.length) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'DROPSET cannot include supersetItems or extraVideos');
+            }
+            if (item.circuitGroup) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'DROPSET cannot include circuitGroup');
+            }
+            if (!item.dropsetConfig || !Array.isArray(item.dropsetConfig.dropPercents) || item.dropsetConfig.dropPercents.length < 1) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'DROPSET must include dropsetConfig.dropPercents (non-empty array)');
+            }
+
+            const dropPercents = item.dropsetConfig.dropPercents.map((p) => Number(p));
+            if (dropPercents.some((p) => !Number.isFinite(p) || p <= 0 || p >= 100)) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'dropsetConfig.dropPercents must be numbers between 1 and 99');
+            }
+            if (
+                item.dropsetConfig.restSeconds !== undefined &&
+                (!Number.isFinite(item.dropsetConfig.restSeconds) || item.dropsetConfig.restSeconds < 0)
+            ) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'dropsetConfig.restSeconds must be a non-negative number');
+            }
+            dropsetConfig = { dropPercents, restSeconds: item.dropsetConfig.restSeconds };
         } else if (itemType === 'CIRCUIT') {
-            circuitGroup = item.circuitGroup ?? null;
+            if (item.supersetItems?.length || item.extraVideos?.length) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'CIRCUIT cannot include supersetItems or extraVideos');
+            }
+            if (item.dropsetConfig) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'CIRCUIT cannot include dropsetConfig');
+            }
+            circuitGroup = (item.circuitGroup ?? '').trim() || null;
+            if (!circuitGroup) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'CIRCUIT must include circuitGroup');
+            }
+        } else {
+            // REGULAR
+            if (item.supersetItems?.length || item.extraVideos?.length) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'REGULAR cannot include supersetItems or extraVideos');
+            }
+            if (item.dropsetConfig) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'REGULAR cannot include dropsetConfig');
+            }
+            if (item.circuitGroup) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'REGULAR cannot include circuitGroup');
+            }
         }
 
         return {

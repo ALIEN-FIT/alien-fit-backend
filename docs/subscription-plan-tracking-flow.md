@@ -23,7 +23,8 @@ Admin activates subscription ──▶ Subscription active? ──▶ Four-week 
 
 - Subscription activation/renewal sets a four-week window (`nextProfileUpdateDue`).
 - User profile updates require an active subscription **and** an open update window; otherwise, a pending plan-update request is created automatically.
-- Training and diet plans are created by admins only, repeat the provided seven-day template across four weeks (28 days total), and training blocks now reference the reusable training-video library (each item points to a curated video plus required sets/repeats and optional supersets).
+- Training plans are created by admins only and repeat a provided 7-day template across 4 weeks (28 days total). Each item references a reusable training-video record and must specify `itemType` (`REGULAR`, `SUPERSET`, `DROPSET`, `CIRCUIT`) plus the required fields for that type.
+- Diet plans are created by admins only and are generated for 30 days from a single template meal list (same meals repeated daily). Each meal stores a `mealName` and a free-text `text` block.
 - Daily tracking records completion of plan items, extra work, extra food, and water intake.
 
 ## Endpoint Reference
@@ -134,7 +135,11 @@ Content-Type: application/json
 | `POST` | `/api/v1/plans/training/week/:userId` | Create/overwrite four-week training plan from 7-day template | Admin only |
 | `GET` | `/api/v1/plans/training/:userId` | Retrieve user plan | Admin or owner |
 
-Request template example (each item references a training video and optionally defines a two-item superset block):
+Request template example (7-day template). Each item references a training video and uses `itemType` to define behavior:
+- `REGULAR`: standard straight sets.
+- `SUPERSET`: requires `supersetItems` (at least 1) => at least 2 exercises total.
+- `DROPSET`: requires `dropsetConfig.dropPercents`.
+- `CIRCUIT`: requires `circuitGroup` and at least 3 exercises in the same group per day.
 
 ```http
 POST /api/v1/plans/training/week/43b1a7f4-0c57-4d1f-9d41-93322d4b0f68
@@ -156,7 +161,7 @@ Content-Type: application/json
           "trainingVideoId": "01c15f13-76e3-4bc3-934b-8bd9690caeb7",
           "sets": 3,
           "repeats": 12,
-          "isSuperset": true,
+          "itemType": "SUPERSET",
           "supersetItems": [
             {
               "trainingVideoId": "6f7f259b-7404-4289-8ed7-59f0e0e7a7a1",
@@ -176,13 +181,43 @@ Content-Type: application/json
       "dayNumber": 2,
       "items": [
         {
-          "title": "Bench Press",
-          "description": "5 x 5",
-          "duration": 35
+          "trainingVideoId": "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2",
+          "sets": 3,
+          "repeats": 12,
+          "itemType": "DROPSET",
+          "dropsetConfig": {
+            "dropPercents": [30, 20],
+            "restSeconds": 0
+          }
         }
       ]
     },
-    { "dayNumber": 3, "items": [] },
+    {
+      "dayNumber": 3,
+      "items": [
+        {
+          "trainingVideoId": "c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3",
+          "sets": 1,
+          "repeats": 15,
+          "itemType": "CIRCUIT",
+          "circuitGroup": "A"
+        },
+        {
+          "trainingVideoId": "d4d4d4d4-4444-4444-8444-d4d4d4d4d4d4",
+          "sets": 1,
+          "repeats": 20,
+          "itemType": "CIRCUIT",
+          "circuitGroup": "A"
+        },
+        {
+          "trainingVideoId": "e5e5e5e5-5555-4555-8555-e5e5e5e5e5e5",
+          "sets": 1,
+          "repeats": 30,
+          "itemType": "CIRCUIT",
+          "circuitGroup": "A"
+        }
+      ]
+    },
     { "dayNumber": 4, "items": [] },
     { "dayNumber": 5, "items": [] },
     { "dayNumber": 6, "items": [] },
@@ -212,6 +247,7 @@ Response snippet (28-day expansion shown abridged):
                   "sets": 4,
                   "repeats": 6,
                   "isSuperset": false,
+                  "itemType": "REGULAR",
                   "trainingVideo": {
                     "id": "a1f1d510-9e7c-4f34-9f1c-ca4fcb7dcd2c",
                     "title": "Back Squat (High Bar)",
@@ -220,7 +256,10 @@ Response snippet (28-day expansion shown abridged):
                       { "id": "leg-strength", "title": "Leg Strength", "imageUrl": "https://cdn.example.com/leg.png" }
                     ]
                   },
-                  "supersetItems": []
+                  "supersetItems": null,
+                  "extraVideos": null,
+                  "dropsetConfig": null,
+                  "circuitGroup": null
                 },
                 {
                   "id": "...",
@@ -228,6 +267,7 @@ Response snippet (28-day expansion shown abridged):
                   "sets": 3,
                   "repeats": 12,
                   "isSuperset": true,
+                  "itemType": "SUPERSET",
                   "trainingVideo": {
                     "id": "01c15f13-76e3-4bc3-934b-8bd9690caeb7",
                     "title": "Walking Lunges",
@@ -288,7 +328,7 @@ Response snippet (28-day expansion shown abridged):
 
 | Method | Route | Description | Notes |
 | --- | --- | --- | --- |
-| `POST` | `/api/v1/plans/diet/week/:userId` | Create/overwrite diet plan | Admin only |
+| `POST` | `/api/v1/plans/diet/week/:userId` | Create/overwrite 30-day diet plan from a template meal list | Admin only |
 | `GET` | `/api/v1/plans/diet/:userId` | Retrieve diet plan | Admin or owner |
 
 Request example:
@@ -300,22 +340,23 @@ Content-Type: application/json
 
 {
   "startDate": "2025-11-18T00:00:00.000Z",
-  "days": [
+  "recommendedWaterIntakeMl": 3500,
+  "meals": [
     {
-      "dayNumber": 1,
-      "meals": {
-        "breakfast": [ { "foodName": "Greek Yogurt", "amount": "200g" } ],
-        "lunch": [ { "foodName": "Grilled Salmon", "amount": "180g" } ],
-        "snacks": [ { "foodName": "Almonds", "amount": "30g" } ],
-        "dinner": [ { "foodName": "Quinoa Bowl", "amount": "1 bowl" } ]
-      }
+      "mealName": "Meal 1 (Light Iftar – Pre Workout)",
+      "order": 1,
+      "text": "160g cooked white rice\n1 medium banana\n1 scoop whey protein\n2 medium dates\n\nCalories: 600 kcal\nProtein: 33g\nCarbs: 115g\nFats: 3g"
     },
-    { "dayNumber": 2, "meals": { "breakfast": [], "lunch": [], "snacks": [], "dinner": [] } },
-    { "dayNumber": 3, "meals": { "breakfast": [], "lunch": [], "snacks": [], "dinner": [] } },
-    { "dayNumber": 4, "meals": { "breakfast": [], "lunch": [], "snacks": [], "dinner": [] } },
-    { "dayNumber": 5, "meals": { "breakfast": [], "lunch": [], "snacks": [], "dinner": [] } },
-    { "dayNumber": 6, "meals": { "breakfast": [], "lunch": [], "snacks": [], "dinner": [] } },
-    { "dayNumber": 7, "meals": { "breakfast": [], "lunch": [], "snacks": [], "dinner": [] } }
+    {
+      "mealName": "Meal 2 (Post Workout)",
+      "order": 2,
+      "text": "200g grilled chicken breast\n250g cooked potatoes\nBig green salad\n1 tbsp olive oil\n\nCalories: 680 kcal\nProtein: 60g\nCarbs: 55g\nFats: 20g"
+    },
+    {
+      "mealName": "Snack",
+      "order": 3,
+      "text": "200g Greek yogurt\n15g almonds\n1 tbsp peanut butter\n\nCalories: 350 kcal\nProtein: 30g\nCarbs: 20g\nFats: 20g"
+    }
   ]
 }
 ```

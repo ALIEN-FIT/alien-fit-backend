@@ -3,6 +3,8 @@ import { sequelize } from '../../../../../database/db-config.js';
 import { UserEntity } from '../../../../user/v1/entity/user.entity.js';
 import { TrainingVideoEntity } from '../../../../training-video/v1/entity/training-video.entity.js';
 
+export type TrainingPlanItemType = 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
+
 export class TrainingPlanEntity extends Model {
     declare id: string;
     declare userId: string | null;
@@ -37,7 +39,7 @@ export class TrainingPlanItemEntity extends Model {
     declare trainingVideoId: string;
     declare isSuperset: boolean;
     declare supersetItems: Array<Record<string, unknown>> | null;
-    declare itemType: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
+    declare itemType: TrainingPlanItemType;
     declare extraVideos: Array<Record<string, unknown>> | null;
     declare dropsetConfig: Record<string, unknown> | null;
     declare circuitGroup: string | null;

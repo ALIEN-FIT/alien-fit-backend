@@ -63,36 +63,29 @@ Host: example.com
             "id": "123e4567-e89b-12d3-a456-426614174000",
             "name": "Beginner Plan",
             "subTitle": "Perfect for getting started",
-            "description": "A 7-day beginner-friendly training plan.",
+            "description": "A curated training block list (not a 7-day template).",
             "imageId": "456e7890-e12b-34d5-c678-526614174111",
             "durationInMinutes": 45,
             "level": "Beginner",
-            "weeks": [
+            "trainings": [
                 {
-                    "weekNumber": 1,
-                    "days": [
-                        {
-                            "dayIndex": 1,
-                            "weekNumber": 1,
-                            "items": [
-                                {
-                                    "id": "item1",
-                                    "order": 1,
-                                    "sets": 3,
-                                    "repeats": 12,
-                                    "isSuperset": false,
-                                    "trainingVideo": {
-                                        "id": "video1",
-                                        "title": "Push-ups",
-                                        "description": "A basic push-up exercise.",
-                                        "videoUrl": "https://example.com/videos/push-ups",
-                                        "tags": []
-                                    },
-                                    "supersetItems": []
-                                }
-                            ]
-                        }
-                    ]
+                    "id": "training1",
+                    "order": 1,
+                    "type": "REGULAR",
+                    "title": "Push-ups",
+                    "description": "A basic push-up exercise.",
+                    "sets": 3,
+                    "repeats": 12,
+                    "duration": null,
+                    "config": null,
+                    "trainingVideo": {
+                        "id": "video1",
+                        "title": "Push-ups",
+                        "description": "A basic push-up exercise.",
+                        "videoUrl": "https://example.com/videos/push-ups",
+                        "tags": []
+                    },
+                    "items": []
                 }
             ]
         }
@@ -118,25 +111,43 @@ Authorization: Bearer <admin-token>
 {
     "name": "Advanced Plan",
     "subTitle": "For experienced athletes",
-    "description": "A challenging 7-day training plan for advanced users.",
+    "description": "A challenging curated training list for advanced users.",
     "imageId": "789e1234-e56b-78d9-f012-626614174222",
     "durationInMinutes": 60,
     "level": "Advanced",
-    "days": [
+    "trainings": [
         {
-            "dayNumber": 1,
+            "type": "REGULAR",
+            "trainingVideoId": "video1",
+            "sets": 4,
+            "repeats": 10
+        },
+        {
+            "type": "SUPERSET",
+            "title": "Chest + Back",
+            "sets": 3,
             "items": [
-                {
-                    "trainingVideoId": "video1",
-                    "sets": 4,
-                    "repeats": 10,
-                    "isSuperset": false
-                }
+                { "trainingVideoId": "video2", "repeats": 10 },
+                { "trainingVideoId": "video3", "repeats": 10 }
             ]
         },
         {
-            "dayNumber": 2,
-            "items": []
+            "type": "DROPSET",
+            "title": "Lateral Raise Dropset",
+            "items": [
+                { "trainingVideoId": "video4", "repeats": 12 },
+                { "trainingVideoId": "video4", "repeats": 8 }
+            ]
+        },
+        {
+            "type": "CIRCUIT",
+            "title": "Full body circuit",
+            "config": { "rounds": 3 },
+            "items": [
+                { "trainingVideoId": "video5", "repeats": 15 },
+                { "trainingVideoId": "video6", "repeats": 20 },
+                { "trainingVideoId": "video7", "duration": 45 }
+            ]
         }
     ]
 }

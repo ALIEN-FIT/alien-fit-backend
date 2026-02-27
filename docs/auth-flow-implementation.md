@@ -139,46 +139,17 @@ Content-Type: application/json
 {
   "startDate": "2026-02-10",  // optional
   "recommendedWaterIntakeMl": 2000,  // optional
-  "days": [
+  "meals": [
     {
-      "dayNumber": 1,  // optional, 1-7
-      "meals": [
-        {
-          "mealName": "Breakfast",
-          "order": 1,
-          "foods": [
-            {
-              "name": "Oatmeal",
-              "grams": 50,
-              "calories": 190,
-              "fats": 3,
-              "carbs": 32
-            },
-            {
-              "name": "Banana",
-              "grams": 120,
-              "calories": 105,
-              "fats": 0,
-              "carbs": 27
-            }
-          ]
-        },
-        {
-          "mealName": "Lunch",
-          "order": 2,
-          "foods": [
-            {
-              "name": "Chicken Breast",
-              "grams": 200,
-              "calories": 330,
-              "fats": 7,
-              "carbs": 0
-            }
-          ]
-        }
-      ]
+      "mealName": "Meal 1 (Light Iftar – Pre Workout)",
+      "order": 1,
+      "text": "160g cooked white rice\n1 medium banana\n1 scoop whey protein\n2 medium dates\n\nCalories: 600 kcal"
+    },
+    {
+      "mealName": "Meal 2 (Post Workout)",
+      "order": 2,
+      "text": "200g grilled chicken breast\n250g cooked potatoes\nBig green salad\n1 tbsp olive oil\n\nCalories: 680 kcal"
     }
-    // ... 6 more days (total 7 days required)
   ]
 }
 ```

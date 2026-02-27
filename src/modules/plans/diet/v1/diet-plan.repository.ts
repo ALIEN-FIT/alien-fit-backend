@@ -69,9 +69,9 @@ export class DietPlanRepository {
             date: Date;
             weekNumber: number;
             meals: Array<{
-                mealName: string;
+                mealName: string | null;
                 order: number;
-                foods: Array<{ name: string; grams: number; calories: number; fats: number; carbs: number }>;
+                foods: Array<Record<string, unknown>>;
             }>;
         }>,
         recommendedWaterIntakeMl: number | null,
@@ -115,9 +115,9 @@ export class DietPlanRepository {
             date: Date;
             weekNumber: number;
             meals: Array<{
-                mealName: string;
+                mealName: string | null;
                 order: number;
-                foods: Array<{ name: string; grams: number; calories: number; fats: number; carbs: number }>;
+                foods: Array<Record<string, unknown>>;
             }>;
         }>,
         recommendedWaterIntakeMl: number | null,
