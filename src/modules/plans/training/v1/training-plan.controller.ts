@@ -17,6 +17,7 @@ interface SerializedTrainingPlan {
         weekNumber: number;
         days: Array<{
             dayIndex: number;
+            name: string | null;
             date: Date;
             isDone: boolean;
             items: Array<SerializedTrainingPlanItem>;
@@ -132,6 +133,7 @@ async function serializeTrainingPlan(
 
         weeksMap.get(day.weekNumber)!.days.push({
             dayIndex: day.dayIndex,
+            name: day.name ?? null,
             date: day.date,
             isDone,
             items,
@@ -156,6 +158,7 @@ async function serializeTrainingPlan(
             weekNumber: week.weekNumber,
             days: week.days.map((day) => ({
                 dayIndex: day.dayIndex,
+                name: day.name,
                 date: day.date,
                 isDone: day.isDone,
                 items: day.items.map((item) => ({
@@ -278,6 +281,7 @@ interface WeekAccumulator {
     weekNumber: number;
     days: Array<{
         dayIndex: number;
+        name: string | null;
         date: Date;
         isDone: boolean;
         items: RawTrainingPlanItem[];
@@ -340,6 +344,7 @@ async function processDays(
         processedDays.push({
             dayIndex: day.dayIndex,
             weekNumber: day.weekNumber,
+            name: day.name ?? null,
             date: day.date,
             isDone,
             items,

@@ -19,6 +19,7 @@ export class TrainingPlanDayEntity extends Model {
     declare id: string;
     declare planId: string;
     declare dayIndex: number;
+    declare name: string | null;
     declare date: Date;
     declare weekNumber: number;
 
@@ -91,6 +92,10 @@ TrainingPlanDayEntity.init(
         dayIndex: {
             type: DataTypes.INTEGER,
             allowNull: false,
+        },
+        name: {
+            type: DataTypes.STRING,
+            allowNull: true,
         },
         date: {
             type: DataTypes.DATE,

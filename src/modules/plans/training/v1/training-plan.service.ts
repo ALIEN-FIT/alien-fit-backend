@@ -30,6 +30,7 @@ interface TrainingPlanItemInput {
 }
 
 interface TrainingPlanDayInput {
+    name: string;
     dayNumber?: number;
     items: TrainingPlanItemInput[];
 }
@@ -137,8 +138,11 @@ export class TrainingPlanService {
     private static normalizeTemplate(
         days: TrainingPlanDayInput[],
         videoMap: Map<string, TrainingVideoEntity>,
-    ): NormalizedTrainingPlanItem[][] {
-        const template: NormalizedTrainingPlanItem[][] = Array.from({ length: 7 }, () => []);
+    ): NormalizedTrainingPlanDay[] {
+        const template: NormalizedTrainingPlanDay[] = Array.from({ length: 7 }, (_, index) => ({
+            name: `Day ${index + 1}`,
+            items: [],
+        }));
 
         days.forEach((day, index) => {
             const position = day.dayNumber ? day.dayNumber - 1 : index;
@@ -147,7 +151,10 @@ export class TrainingPlanService {
             }
             const normalizedItems = day.items?.map((item) => this.normalizeItem(item, videoMap)) ?? [];
             this.assertCircuitGroupsAreValid(normalizedItems);
-            template[position] = normalizedItems;
+            template[position] = {
+                name: String(day.name ?? '').trim() || `Day ${position + 1}`,
+                items: normalizedItems,
+            };
         });
 
         return template;
@@ -296,14 +303,14 @@ export class TrainingPlanService {
 
     private static buildDaysPayload(
         startDate: Date,
-        template: NormalizedTrainingPlanItem[][],
+        template: NormalizedTrainingPlanDay[],
     ) {
         return Array.from({ length: 28 }, (_, index) => {
             const date = new Date(startDate);
             date.setDate(startDate.getDate() + index);
-            const templateItems = template[index % 7];
+            const templateDay = template[index % 7];
 
-            const items = templateItems.map((item, orderIndex) => ({
+            const items = templateDay.items.map((item, orderIndex) => ({
                 order: orderIndex + 1,
                 title: item.trainingVideo.title,
                 videoLink: item.trainingVideo.videoUrl,
@@ -322,12 +329,18 @@ export class TrainingPlanService {
 
             return {
                 dayIndex: index + 1,
+                name: templateDay.name,
                 date,
                 weekNumber: Math.floor(index / 7) + 1,
                 items,
             };
         });
     }
+}
+
+interface NormalizedTrainingPlanDay {
+    name: string;
+    items: NormalizedTrainingPlanItem[];
 }
 
 interface NormalizedTrainingPlanItem {

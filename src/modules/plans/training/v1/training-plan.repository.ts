@@ -93,6 +93,7 @@ export class TrainingPlanRepository {
         endDate: Date,
         days: Array<{
             dayIndex: number;
+            name?: string | null;
             date: Date;
             weekNumber: number;
             items: Array<{
@@ -122,6 +123,7 @@ export class TrainingPlanRepository {
                 const planDay = await TrainingPlanDayEntity.create({
                     planId: plan.id,
                     dayIndex: day.dayIndex,
+                    name: day.name ?? null,
                     date: day.date,
                     weekNumber: day.weekNumber,
                 }, { transaction });
@@ -159,6 +161,7 @@ export class TrainingPlanRepository {
         endDate: Date,
         days: Array<{
             dayIndex: number;
+            name?: string | null;
             date: Date;
             weekNumber: number;
             items: Array<{
@@ -186,6 +189,7 @@ export class TrainingPlanRepository {
                 const planDay = await TrainingPlanDayEntity.create({
                     planId: plan.id,
                     dayIndex: day.dayIndex,
+                    name: day.name ?? null,
                     date: day.date,
                     weekNumber: day.weekNumber,
                 }, { transaction });
