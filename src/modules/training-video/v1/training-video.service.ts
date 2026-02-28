@@ -201,12 +201,14 @@ interface CreateTrainingTagPayload {
     title: string;
     description?: string | null;
     imageId: string;
+    priority?: number;
 }
 
 interface UpdateTrainingTagPayload {
     title?: string;
     description?: string | null;
     imageId?: string;
+    priority?: number;
 }
 
 export class TrainingTagService {

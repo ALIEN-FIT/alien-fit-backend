@@ -45,12 +45,14 @@ export const createTrainingTagSchema = Joi.object({
     title: Joi.string().trim().min(2).max(100).required(),
     description: Joi.string().allow('', null).optional(),
     imageId: Joi.string().required(),
+    priority: Joi.number().integer().min(1).optional(),
 }).unknown(false);
 
 export const updateTrainingTagSchema = Joi.object({
     title: Joi.string().trim().min(2).max(100).optional(),
     description: Joi.string().allow('', null).optional(),
     imageId: Joi.string().optional(),
+    priority: Joi.number().integer().min(1).optional(),
 })
     .min(1)
     .messages({ 'object.min': 'At least one field must be provided' });
@@ -63,7 +65,7 @@ export const listTrainingTagQuerySchema = Joi.object({
     search: Joi.string().optional(),
     page: Joi.number().integer().positive().optional(),
     limit: Joi.number().integer().positive().optional(),
-    sortBy: Joi.string().valid('createdAt', 'title').optional(),
+    sortBy: Joi.string().valid('createdAt', 'title', 'priority').optional(),
     sortDirection: Joi.string().valid('asc', 'desc').optional(),
 }).unknown(true);
 

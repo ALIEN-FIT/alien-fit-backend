@@ -244,7 +244,11 @@ function toSortField(value: unknown): 'createdAt' | 'title' | undefined {
     return undefined;
 }
 
-function toTagSortField(value: unknown): 'createdAt' | 'title' | undefined {
+function toTagSortField(value: unknown): 'createdAt' | 'title' | 'priority' | undefined {
+    const stringValue = toOptionalString(value);
+    if (stringValue === 'priority') {
+        return stringValue;
+    }
     return toSortField(value);
 }
 

@@ -11,13 +11,13 @@ export interface TrainingTagFilters {
 export interface TagPaginationOptions {
     page?: number;
     limit?: number;
-    sortBy?: 'createdAt' | 'title';
+    sortBy?: 'createdAt' | 'title' | 'priority';
     sortDirection?: 'asc' | 'desc';
 }
 
 export class TrainingTagRepository {
     static createTag(
-        payload: { title: string; description?: string | null; imageId: string },
+        payload: { title: string; description?: string | null; imageId: string; priority?: number },
         transaction?: Transaction,
     ) {
         return TrainingTagEntity.create(
@@ -25,6 +25,7 @@ export class TrainingTagRepository {
                 title: payload.title,
                 description: payload.description ?? null,
                 imageId: payload.imageId,
+                priority: payload.priority ?? 1,
             },
             { transaction },
         );
@@ -43,7 +44,7 @@ export class TrainingTagRepository {
 
     static async updateTag(
         id: string,
-        payload: { title?: string; description?: string | null; imageId?: string },
+        payload: { title?: string; description?: string | null; imageId?: string; priority?: number },
         transaction?: Transaction,
     ) {
         const tag = await TrainingTagEntity.findByPk(id, { transaction });
@@ -55,7 +56,8 @@ export class TrainingTagRepository {
             {
                 title: payload.title ?? tag.title,
                 description: payload.description ?? tag.description,
-                imageUrl: payload.imageId ?? tag.imageId,
+                imageId: payload.imageId ?? tag.imageId,
+                priority: payload.priority ?? tag.priority,
             },
             { transaction },
         );
@@ -79,7 +81,10 @@ export class TrainingTagRepository {
         const limit = Number.isFinite(pagination.limit) && pagination.limit! > 0 ? Number(pagination.limit) : 25;
         const page = Number.isFinite(pagination.page) && pagination.page! > 0 ? Number(pagination.page) : 1;
         const offset = (page - 1) * limit;
-        const order = [[pagination.sortBy ?? 'title', (pagination.sortDirection ?? 'asc').toUpperCase()]];
+        const order = [
+            [pagination.sortBy ?? 'priority', (pagination.sortDirection ?? 'asc').toUpperCase()],
+            ['title', 'ASC'],
+        ];
 
         const { rows, count } = await TrainingTagEntity.findAndCountAll({
             where,

@@ -7,6 +7,7 @@ export class TrainingTagEntity extends Model {
     declare title: string;
     declare description: string | null;
     declare imageId: string;
+    declare priority: number;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -57,12 +58,22 @@ TrainingTagEntity.init(
                 key: 'id',
             }
         },
+        priority: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 1,
+        },
     },
     {
         sequelize,
         modelName: 'TrainingTag',
         tableName: 'training_tags',
         timestamps: true,
+        indexes: [
+            {
+                fields: ['priority'],
+            },
+        ],
     }
 );
 
