@@ -72,7 +72,7 @@ async function enqueueDailyReminders() {
 
         const parts: string[] = [];
         if (needsTrainingReminder) parts.push('training');
-        if (needsDietReminder) parts.push('food');
+        if (needsDietReminder) parts.push('meals');
 
         jobs.push({
             name: 'send',
@@ -80,8 +80,8 @@ async function enqueueDailyReminders() {
                 userId,
                 byUserId: null,
                 type: NotificationTypes.TRAINING_REMINDER,
-                title: 'Daily reminder',
-                body: `Don\'t forget to finish today\'s ${parts.join(' and ')}.`,
+                title: 'Fuel reminder',
+                body: `Stay on track , complete today\`s  ${parts.join(' and ')}.`,
             },
         });
     }
