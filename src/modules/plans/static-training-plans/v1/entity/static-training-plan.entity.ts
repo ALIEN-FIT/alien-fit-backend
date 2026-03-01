@@ -10,6 +10,7 @@ export class StaticTrainingPlanEntity extends Model {
     declare imageId: string;
     declare durationInMinutes: number | null;
     declare level: string | null;
+    declare priority: number;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -97,12 +98,22 @@ StaticTrainingPlanEntity.init(
             type: DataTypes.STRING,
             allowNull: true,
         },
+        priority: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 1,
+        },
     },
     {
         sequelize,
         modelName: 'StaticTrainingPlan',
         tableName: 'static_training_plans',
         timestamps: true,
+        indexes: [
+            {
+                fields: ['priority'],
+            },
+        ],
     },
 );
 

@@ -13,6 +13,7 @@ interface SerializedStaticTrainingPlan {
     imageId: string;
     durationInMinutes: number | null;
     level: string | null;
+    priority: number;
     trainings: SerializedStaticTraining[];
 }
 
@@ -76,6 +77,7 @@ async function serializeStaticPlan(plan: StaticTrainingPlanEntity): Promise<Seri
         imageId: json.imageId,
         durationInMinutes: json.durationInMinutes ?? null,
         level: json.level ?? null,
+        priority: json.priority ?? 1,
         trainings: (json.trainings ?? []).map((training: any) => {
             const items = (training.items ?? []).map((item: any) => {
                 const video = item?.trainingVideoId ? nestedVideosMap.get(item.trainingVideoId) : undefined;
@@ -155,6 +157,7 @@ export async function listStaticTrainingPlansController(req: Request, res: Respo
                 imageId: plan.imageId,
                 durationInMinutes: plan.durationInMinutes,
                 level: plan.level,
+                priority: plan.priority,
                 createdAt: plan.createdAt,
                 updatedAt: plan.updatedAt,
             })),

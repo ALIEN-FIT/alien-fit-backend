@@ -66,6 +66,7 @@ export const createStaticTrainingPlanSchema = Joi.object({
     imageId: JoiCustomValidateObjectId('Image ID'),
     durationInMinutes: Joi.number().integer().positive().optional(),
     level: Joi.string().trim().optional(),
+    priority: Joi.number().integer().min(1).optional(),
     trainings: Joi.array().items(staticTrainingSchema).min(1).required(),
 }).unknown(false);
 
@@ -76,9 +77,10 @@ export const updateStaticTrainingPlanSchema = Joi.object({
     imageId: JoiCustomValidateObjectId('Image ID', true),
     durationInMinutes: Joi.number().integer().positive().optional(),
     level: Joi.string().trim().optional(),
+    priority: Joi.number().integer().min(1).optional(),
     trainings: Joi.array().items(staticTrainingSchema).min(1).optional(),
 })
-    .or('name', 'subTitle', 'description', 'imageId', 'durationInMinutes', 'level', 'trainings')
+    .or('name', 'subTitle', 'description', 'imageId', 'durationInMinutes', 'level', 'priority', 'trainings')
     .unknown(false);
 
 export const staticTrainingPlanParamSchema = Joi.object({

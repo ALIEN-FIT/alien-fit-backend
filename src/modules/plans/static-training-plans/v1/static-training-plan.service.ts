@@ -37,6 +37,7 @@ interface CreateStaticTrainingPlanPayload {
     imageId: string;
     durationInMinutes?: number | null;
     level?: string | null;
+    priority?: number;
     trainings: StaticTrainingPlanTrainingInput[];
 }
 
@@ -47,6 +48,7 @@ interface UpdateStaticTrainingPlanPayload {
     imageId?: string;
     durationInMinutes?: number | null;
     level?: string | null;
+    priority?: number;
     trainings?: StaticTrainingPlanTrainingInput[];
 }
 
@@ -67,6 +69,7 @@ export class StaticTrainingPlanService {
             payload.imageId,
             payload.durationInMinutes ?? null,
             payload.level ?? null,
+            payload.priority,
             trainingsPayload,
         );
 
@@ -81,7 +84,15 @@ export class StaticTrainingPlanService {
     static async updateStaticPlan(actor: UserEntity, planId: string, payload: UpdateStaticTrainingPlanPayload) {
         this.ensureAdmin(actor);
 
-        const meta: { name?: string; subTitle?: string | null; description?: string | null; imageId?: string; durationInMinutes?: number | null; level?: string | null } = {};
+        const meta: {
+            name?: string;
+            subTitle?: string | null;
+            description?: string | null;
+            imageId?: string;
+            durationInMinutes?: number | null;
+            level?: string | null;
+            priority?: number;
+        } = {};
         if (payload.name !== undefined) {
             meta.name = payload.name;
         }
@@ -99,6 +110,9 @@ export class StaticTrainingPlanService {
         }
         if (payload.level !== undefined) {
             meta.level = payload.level ?? null;
+        }
+        if (payload.priority !== undefined) {
+            meta.priority = payload.priority;
         }
 
         let trainingsPayload: StaticTrainingPlanTrainingPayload[] | undefined;

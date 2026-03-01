@@ -67,10 +67,13 @@ export class StaticTrainingPlanRepository {
 
         const { rows, count } = await StaticTrainingPlanEntity.findAndCountAll({
             where,
-            attributes: ['id', 'name', 'subTitle', 'description', 'imageId', 'durationInMinutes', 'level', 'createdAt', 'updatedAt'],
+            attributes: ['id', 'name', 'subTitle', 'description', 'imageId', 'durationInMinutes', 'level', 'priority', 'createdAt', 'updatedAt'],
             limit,
             offset,
-            order: [['createdAt', 'desc']],
+            order: [
+                ['priority', 'ASC'],
+                ['createdAt', 'DESC'],
+            ],
         } as FindAndCountOptions);
 
         return {
@@ -91,11 +94,12 @@ export class StaticTrainingPlanRepository {
         imageId: string,
         durationInMinutes: number | null,
         level: string | null,
+        priority: number | undefined,
         trainings: StaticTrainingPlanTrainingPayload[],
     ) {
         return sequelize.transaction(async (transaction) => {
             const plan = await StaticTrainingPlanEntity.create(
-                { name, subTitle, description, imageId, durationInMinutes, level },
+                { name, subTitle, description, imageId, durationInMinutes, level, priority: priority ?? 1 },
                 { transaction },
             );
 
@@ -106,7 +110,15 @@ export class StaticTrainingPlanRepository {
 
     static async updatePlan(
         planId: string,
-        meta: { name?: string; subTitle?: string | null; description?: string | null; imageId?: string; durationInMinutes?: number | null; level?: string | null },
+        meta: {
+            name?: string;
+            subTitle?: string | null;
+            description?: string | null;
+            imageId?: string;
+            durationInMinutes?: number | null;
+            level?: string | null;
+            priority?: number;
+        },
         trainings?: StaticTrainingPlanTrainingPayload[],
     ) {
         return sequelize.transaction(async (transaction) => {
