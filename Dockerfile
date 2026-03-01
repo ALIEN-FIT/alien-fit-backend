@@ -47,6 +47,7 @@ COPY --from=builder /app/dist/i18n ./dist/i18n
 COPY --from=builder /app/src/database/migrations ./src/database/migrations
 COPY --from=builder /app/src/database/config.cjs ./src/database/config.cjs
 COPY --from=builder /app/.sequelizerc ./.sequelizerc
+COPY --from=builder /app/script ./script
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
