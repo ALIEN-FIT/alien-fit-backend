@@ -6,6 +6,9 @@ const isoDate = Joi.string().isoDate();
 export const markTrainingDoneSchema = Joi.object({
     planItemId: JoiCustomValidateObjectId('Plan Item ID', true),
     date: isoDate.optional(),
+    doneSets: Joi.number().integer().positive().optional(),
+    doneRepeats: Joi.number().integer().positive().optional(),
+    note: Joi.string().max(500).optional(),
 });
 
 export const markDietDoneSchema = Joi.object({

@@ -89,6 +89,9 @@ export const userProfileSchema = Joi.object({
     bodyImages: Joi.array().items(Joi.string()).allow(null).optional().messages({
         'array.base': 'Body images must be an array of strings',
     }),
+    inbodyImage: Joi.string().allow(null).optional().messages({
+        'string.base': 'InBody image must be a string',
+    }),
 });
 
 export const createUpdateUserProfileSchema = userProfileSchema;

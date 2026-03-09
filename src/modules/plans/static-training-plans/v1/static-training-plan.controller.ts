@@ -129,6 +129,28 @@ export async function updateStaticTrainingPlanController(req: Request, res: Resp
     });
 }
 
+export async function updateStaticTrainingEntryController(req: Request, res: Response): Promise<void> {
+    const { planId, trainingId } = req.params;
+    const plan = await StaticTrainingPlanService.updateTrainingById(req.user!, planId, trainingId, req.body);
+    const serializedPlan = await serializeStaticPlan(plan);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { staticTrainingPlan: serializedPlan },
+    });
+}
+
+export async function deleteStaticTrainingEntryController(req: Request, res: Response): Promise<void> {
+    const { planId, trainingId } = req.params;
+    const plan = await StaticTrainingPlanService.deleteTrainingById(req.user!, planId, trainingId);
+    const serializedPlan = await serializeStaticPlan(plan);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { staticTrainingPlan: serializedPlan },
+    });
+}
+
 export async function deleteStaticTrainingPlanController(req: Request, res: Response): Promise<void> {
     const { planId } = req.params;
     await StaticTrainingPlanService.deleteStaticPlan(req.user!, planId);

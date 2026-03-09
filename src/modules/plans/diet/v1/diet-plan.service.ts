@@ -8,6 +8,8 @@ import { UserEntity } from '../../../user/v1/entity/user.entity.js';
 import { addDays, startOfDayUTC } from '../../../../utils/date.utils.js';
 import { SubscriptionService } from '../../../subscription/v1/subscription.service.js';
 import { AdminSettingsService } from '../../../admin-settings/v1/admin-settings.service.js';
+import { DietMealItemEntity, DietPlanDayEntity } from './entity/diet-plan.entity.js';
+import { sequelize } from '../../../../database/db-config.js';
 
 interface DietMealInput {
     mealName?: string;
@@ -20,6 +22,18 @@ interface CreateDietPlanPayload {
     recommendedWaterIntakeMl?: number;
     meals?: DietMealInput[];
     snacks?: DietMealInput[];
+}
+
+interface UpdateDietPlanDayPayload {
+    meals?: DietMealInput[];
+    snacks?: DietMealInput[];
+}
+
+interface UpdateDietMealPayload {
+    mealName?: string;
+    order?: number;
+    text?: string;
+    itemType?: 'MEAL' | 'SNACK';
 }
 
 export class DietPlanService {
@@ -94,6 +108,128 @@ export class DietPlanService {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet plan not found');
         }
         return plan;
+    }
+
+    static async updatePlanDayByPlanId(
+        actor: UserEntity,
+        planId: string,
+        dayIndex: number,
+        payload: UpdateDietPlanDayPayload,
+    ): Promise<DietPlanEntity> {
+        if (actor.role !== Roles.ADMIN) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust diet plans');
+        }
+
+        const plan = await DietPlanRepository.findById(planId);
+        if (!plan) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet plan not found');
+        }
+
+        const day = await DietPlanDayEntity.findOne({ where: { planId, dayIndex } });
+        if (!day) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet plan day not found');
+        }
+
+        const mealsInput = payload.meals ? this.normalizeMeals(payload.meals) : [];
+        const snacksInput = payload.snacks ? this.normalizeMeals(payload.snacks) : [];
+
+        await sequelize.transaction(async (transaction) => {
+            await DietMealItemEntity.destroy({ where: { dayId: day.id }, transaction });
+
+            const allItems = [
+                ...mealsInput.map((m) => ({
+                    mealName: m.mealName && m.mealName.length > 0 ? m.mealName : `Meal ${m.order}`,
+                    order: m.order,
+                    foods: [{ text: m.text, itemType: 'MEAL' }],
+                    dayId: day.id,
+                })),
+                ...snacksInput.map((m) => ({
+                    mealName: m.mealName && m.mealName.length > 0 ? m.mealName : `Snack ${m.order}`,
+                    order: m.order,
+                    foods: [{ text: m.text, itemType: 'SNACK' }],
+                    dayId: day.id,
+                })),
+            ];
+
+            if (allItems.length > 0) {
+                await DietMealItemEntity.bulkCreate(allItems, { transaction });
+            }
+        });
+
+        return (await DietPlanRepository.findById(planId)) as DietPlanEntity;
+    }
+
+    static async clearPlanDayByPlanId(actor: UserEntity, planId: string, dayIndex: number): Promise<DietPlanEntity> {
+        if (actor.role !== Roles.ADMIN) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust diet plans');
+        }
+
+        const day = await DietPlanDayEntity.findOne({ where: { planId, dayIndex } });
+        if (!day) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet plan day not found');
+        }
+
+        await DietMealItemEntity.destroy({ where: { dayId: day.id } });
+        return (await DietPlanRepository.findById(planId)) as DietPlanEntity;
+    }
+
+    static async updateMealById(actor: UserEntity, mealItemId: string, payload: UpdateDietMealPayload): Promise<DietPlanEntity> {
+        if (actor.role !== Roles.ADMIN) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust diet plans');
+        }
+
+        const meal = await DietMealItemEntity.findByPk(mealItemId, {
+            include: [{ model: DietPlanDayEntity, as: 'day' }],
+        });
+        if (!meal || !(meal as any).day) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet meal item not found');
+        }
+
+        const currentText = String((meal.foods?.[0] as any)?.text ?? '');
+        const currentItemType = String((meal.foods?.[0] as any)?.itemType ?? 'MEAL');
+        const itemType = payload.itemType ?? (currentItemType === 'SNACK' ? 'SNACK' : 'MEAL');
+
+        await meal.update({
+            mealName: payload.mealName ?? meal.mealName,
+            order: payload.order ?? meal.order,
+            foods: [{ text: payload.text ?? currentText, itemType }],
+        });
+
+        const day = (meal as any).day as DietPlanDayEntity;
+        return (await DietPlanRepository.findById(day.planId)) as DietPlanEntity;
+    }
+
+    static async deleteMealById(actor: UserEntity, mealItemId: string): Promise<DietPlanEntity> {
+        if (actor.role !== Roles.ADMIN) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust diet plans');
+        }
+
+        const meal = await DietMealItemEntity.findByPk(mealItemId, {
+            include: [{ model: DietPlanDayEntity, as: 'day' }],
+        });
+        if (!meal || !(meal as any).day) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet meal item not found');
+        }
+
+        const day = (meal as any).day as DietPlanDayEntity;
+        await sequelize.transaction(async (transaction) => {
+            await meal.destroy({ transaction });
+
+            const remaining = await DietMealItemEntity.findAll({
+                where: { dayId: day.id },
+                order: [['order', 'ASC']],
+                transaction,
+            });
+
+            for (let index = 0; index < remaining.length; index += 1) {
+                const current = remaining[index];
+                if (current.order !== index + 1) {
+                    await current.update({ order: index + 1 }, { transaction });
+                }
+            }
+        });
+
+        return (await DietPlanRepository.findById(day.planId)) as DietPlanEntity;
     }
 
     private static normalizeMeals(meals: DietMealInput[]): DietMealInput[] {

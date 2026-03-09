@@ -17,11 +17,7 @@ interface ProfileUpdateResult {
 }
 
 async function assertBodyImagesExistIfProvided(bodyImages: string[] | null | undefined) {
-  if (bodyImages === undefined || bodyImages === null) {
-    return;
-  }
-
-  if (bodyImages.length === 0) {
+  if (bodyImages === undefined || bodyImages === null || bodyImages.length === 0) {
     return;
   }
 
@@ -36,6 +32,17 @@ async function assertBodyImagesExistIfProvided(bodyImages: string[] | null | und
 
   if (foundCount !== uniqueIds.length) {
     throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'One or more bodyImages not found');
+  }
+}
+
+async function assertMediaExistsIfProvided(mediaId: string | null | undefined, label: string) {
+  if (mediaId === undefined || mediaId === null || String(mediaId).trim() === '') {
+    return;
+  }
+
+  const found = await MediaEntity.count({ where: { id: mediaId } });
+  if (found < 1) {
+    throw new HttpResponseError(StatusCodes.BAD_REQUEST, `${label} not found`);
   }
 }
 
@@ -54,8 +61,19 @@ export class UserProfileService {
     profileData: Partial<UserProfileEntity>
   ): Promise<ProfileUpdateResult> {
     await UserService.getUserById(userId);
-
     await assertBodyImagesExistIfProvided(profileData.bodyImages);
+    await assertMediaExistsIfProvided(profileData.inbodyImage as string | null | undefined, 'inbodyImage');
+
+    const payload: Partial<UserProfileEntity> = { ...profileData };
+    const now = new Date();
+
+    if (profileData.bodyImages !== undefined) {
+      payload.bodyImagesUpdatedAt = Array.isArray(profileData.bodyImages) && profileData.bodyImages.length > 0 ? now : null;
+    }
+
+    if (profileData.inbodyImage !== undefined) {
+      payload.inbodyImageUpdatedAt = profileData.inbodyImage ? now : null;
+    }
 
     const isAdmin = actor.role === Roles.ADMIN;
     const isSelfUpdate = actor.id === userId;
@@ -77,11 +95,11 @@ export class UserProfileService {
     let profile = await UserProfileEntity.findOne({ where: { userId } });
 
     if (profile) {
-      await profile.update(profileData);
+      await profile.update(payload);
     } else {
       profile = await UserProfileEntity.create({
         userId,
-        ...profileData,
+        ...payload,
       });
     }
 
@@ -96,7 +114,7 @@ export class UserProfileService {
 
     const request = await PlanUpdateRequestService.ensurePendingProfileUpdateRequest(
       userId,
-      profileData ? { profileData } : null
+      payload ? { profileData: payload } : null
     );
 
     return { profile, isProfileComplete, action: 'updated', planUpdateRequestId: request.id };

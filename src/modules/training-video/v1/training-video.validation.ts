@@ -28,6 +28,12 @@ export const updateTrainingVideoSchema = Joi.object({
     .min(1)
     .messages({ 'object.min': 'At least one field must be provided' });
 
+export const replaceTrainingVideoSchema = Joi.object({
+    replacementVideoId: JoiCustomValidateObjectId('Replacement training video ID', true),
+    deleteOld: Joi.boolean().optional(),
+    deactivateOld: Joi.boolean().optional(),
+}).unknown(false);
+
 export const trainingVideoParamSchema = Joi.object({
     videoId: JoiCustomValidateObjectId('Training video ID'),
 });

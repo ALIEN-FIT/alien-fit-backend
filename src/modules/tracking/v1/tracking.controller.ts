@@ -12,6 +12,7 @@ function serializeTracking(record) {
         waterIntakeMl: json.waterIntakeMl,
         waterIntakeRecords: json.waterIntakeRecords ?? [],
         trainingCompletedItemIds: json.trainingCompletedItemIds ?? [],
+        trainingCompletionRecords: json.trainingCompletionRecords ?? [],
         dietCompletedItemIds: json.dietCompletedItemIds ?? [],
         extraTrainingEntries: json.extraTrainingEntries ?? [],
         extraFoodEntries: json.extraFoodEntries ?? [],

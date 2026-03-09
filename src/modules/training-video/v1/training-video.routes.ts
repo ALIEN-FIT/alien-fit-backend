@@ -9,6 +9,7 @@ import {
     listTrainingVideosController,
     syncTrainingVideosFromYouTubeController,
     updateTrainingVideoController,
+    replaceTrainingVideoController,
     toggleTrainingVideoActiveController,
     youtubeOAuthCallbackController,
     createTrainingTagController,
@@ -20,6 +21,7 @@ import {
 import {
     createTrainingVideoSchema,
     updateTrainingVideoSchema,
+    replaceTrainingVideoSchema,
     trainingVideoParamSchema,
     listTrainingVideoQuerySchema,
     createTrainingTagSchema,
@@ -109,6 +111,13 @@ trainingVideoRouterV1.patch(
     authorizeRoles(Roles.ADMIN),
     validateRequest(updateTrainingVideoSchema.concat(trainingVideoParamSchema)),
     updateTrainingVideoController,
+);
+
+trainingVideoRouterV1.post(
+    '/:videoId/replace',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(replaceTrainingVideoSchema.concat(trainingVideoParamSchema)),
+    replaceTrainingVideoController,
 );
 
 trainingVideoRouterV1.delete(

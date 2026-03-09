@@ -10,6 +10,8 @@ import { TrainingVideoService } from '../../../training-video/v1/training-video.
 import { TrainingVideoEntity } from '../../../training-video/v1/entity/training-video.entity.js';
 import { SubscriptionService } from '../../../subscription/v1/subscription.service.js';
 import { AdminSettingsService } from '../../../admin-settings/v1/admin-settings.service.js';
+import { TrainingPlanDayEntity, TrainingPlanItemEntity } from './entity/training-plan.entity.js';
+import { sequelize } from '../../../../database/db-config.js';
 
 interface SupersetItemInput {
     trainingVideoId: string;
@@ -38,6 +40,23 @@ interface TrainingPlanDayInput {
 interface CreateTrainingPlanPayload {
     startDate?: string;
     days: TrainingPlanDayInput[];
+}
+
+interface UpdateTrainingPlanDayPayload {
+    name?: string;
+    items?: TrainingPlanItemInput[];
+}
+
+interface UpdateTrainingPlanItemPayload {
+    sets?: number;
+    repeats?: number;
+    itemType?: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
+    isSuperset?: boolean;
+    trainingVideoId?: string;
+    supersetItems?: SupersetItemInput[];
+    extraVideos?: Array<{ trainingVideoId: string }>;
+    dropsetConfig?: { dropPercents: number[]; restSeconds?: number };
+    circuitGroup?: string;
 }
 
 export class TrainingPlanService {
@@ -115,6 +134,166 @@ export class TrainingPlanService {
 
         // Clamp between 1 and 4
         return Math.max(1, Math.min(4, weekNumber));
+    }
+
+    static async updatePlanDayByPlanId(
+        actor: UserEntity,
+        planId: string,
+        dayIndex: number,
+        payload: UpdateTrainingPlanDayPayload,
+    ): Promise<TrainingPlanEntity> {
+        if (actor.role !== Roles.ADMIN) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust training plans');
+        }
+
+        const plan = await TrainingPlanRepository.findById(planId);
+        if (!plan) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan not found');
+        }
+
+        const day = await TrainingPlanDayEntity.findOne({ where: { planId, dayIndex } });
+        if (!day) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan day not found');
+        }
+
+        if (payload.items) {
+            const videoIds = this.collectVideoIds([{ name: day.name ?? `Day ${dayIndex}`, dayNumber: dayIndex, items: payload.items }]);
+            const trainingVideosMap = await TrainingVideoService.ensureVideosExist(videoIds);
+            const normalizedItems = payload.items.map((item) => this.normalizeItem(item, trainingVideosMap));
+            this.assertCircuitGroupsAreValid(normalizedItems);
+
+            await sequelize.transaction(async (transaction) => {
+                await TrainingPlanItemEntity.destroy({ where: { dayId: day.id }, transaction });
+                if (normalizedItems.length > 0) {
+                    await TrainingPlanItemEntity.bulkCreate(
+                        normalizedItems.map((item, index) => ({
+                            dayId: day.id,
+                            order: index + 1,
+                            title: item.trainingVideo.title,
+                            videoLink: item.trainingVideo.videoUrl,
+                            description: item.trainingVideo.description ?? null,
+                            duration: null,
+                            repeats: item.repeats,
+                            sets: item.sets,
+                            trainingVideoId: item.trainingVideoId,
+                            isSuperset: Boolean(item.isSuperset),
+                            itemType: item.itemType,
+                            supersetItems: item.itemType === 'SUPERSET' ? item.supersetItems ?? [] : null,
+                            extraVideos: item.itemType === 'SUPERSET' ? item.extraVideos ?? [] : null,
+                            dropsetConfig: item.itemType === 'DROPSET' ? item.dropsetConfig ?? null : null,
+                            circuitGroup: item.itemType === 'CIRCUIT' ? item.circuitGroup ?? null : null,
+                        })),
+                        { transaction },
+                    );
+                }
+
+                if (payload.name !== undefined) {
+                    await day.update({ name: payload.name?.trim() || null }, { transaction });
+                }
+            });
+        } else if (payload.name !== undefined) {
+            await day.update({ name: payload.name?.trim() || null });
+        }
+
+        return (await TrainingPlanRepository.findById(planId)) as TrainingPlanEntity;
+    }
+
+    static async clearPlanDayByPlanId(actor: UserEntity, planId: string, dayIndex: number): Promise<TrainingPlanEntity> {
+        if (actor.role !== Roles.ADMIN) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust training plans');
+        }
+
+        const day = await TrainingPlanDayEntity.findOne({ where: { planId, dayIndex } });
+        if (!day) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan day not found');
+        }
+
+        await TrainingPlanItemEntity.destroy({ where: { dayId: day.id } });
+        return (await TrainingPlanRepository.findById(planId)) as TrainingPlanEntity;
+    }
+
+    static async updatePlanItemById(
+        actor: UserEntity,
+        itemId: string,
+        payload: UpdateTrainingPlanItemPayload,
+    ): Promise<TrainingPlanEntity> {
+        if (actor.role !== Roles.ADMIN) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust training plans');
+        }
+
+        const item = await TrainingPlanItemEntity.findByPk(itemId, {
+            include: [{ model: TrainingPlanDayEntity, as: 'day' }],
+        });
+        if (!item || !(item as any).day) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan item not found');
+        }
+
+        const currentData: TrainingPlanItemInput = {
+            trainingVideoId: payload.trainingVideoId ?? item.trainingVideoId,
+            sets: payload.sets ?? Number(item.sets ?? 0),
+            repeats: payload.repeats ?? Number(item.repeats ?? 0),
+            itemType: payload.itemType ?? (item.itemType as any),
+            isSuperset: payload.isSuperset,
+            supersetItems: payload.supersetItems ?? (Array.isArray(item.supersetItems) ? (item.supersetItems as any) : undefined),
+            extraVideos: payload.extraVideos ?? (Array.isArray(item.extraVideos) ? (item.extraVideos as any) : undefined),
+            dropsetConfig: payload.dropsetConfig ?? ((item.dropsetConfig as any) ?? undefined),
+            circuitGroup: payload.circuitGroup ?? item.circuitGroup ?? undefined,
+        };
+
+        const videoIds = this.collectVideoIds([{ name: 'day', items: [currentData] }]);
+        const trainingVideosMap = await TrainingVideoService.ensureVideosExist(videoIds);
+        const normalized = this.normalizeItem(currentData, trainingVideosMap);
+
+        await item.update({
+            title: normalized.trainingVideo.title,
+            videoLink: normalized.trainingVideo.videoUrl,
+            description: normalized.trainingVideo.description ?? null,
+            repeats: normalized.repeats,
+            sets: normalized.sets,
+            trainingVideoId: normalized.trainingVideoId,
+            isSuperset: normalized.itemType === 'SUPERSET',
+            itemType: normalized.itemType,
+            supersetItems: normalized.itemType === 'SUPERSET' ? normalized.supersetItems ?? [] : null,
+            extraVideos: normalized.itemType === 'SUPERSET' ? normalized.extraVideos ?? [] : null,
+            dropsetConfig: normalized.itemType === 'DROPSET' ? normalized.dropsetConfig ?? null : null,
+            circuitGroup: normalized.itemType === 'CIRCUIT' ? normalized.circuitGroup ?? null : null,
+        });
+
+        const day = (item as any).day as TrainingPlanDayEntity;
+        return (await TrainingPlanRepository.findById(day.planId)) as TrainingPlanEntity;
+    }
+
+    static async deletePlanItemById(actor: UserEntity, itemId: string): Promise<TrainingPlanEntity> {
+        if (actor.role !== Roles.ADMIN) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust training plans');
+        }
+
+        const item = await TrainingPlanItemEntity.findByPk(itemId, {
+            include: [{ model: TrainingPlanDayEntity, as: 'day' }],
+        });
+        if (!item || !(item as any).day) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan item not found');
+        }
+
+        const day = (item as any).day as TrainingPlanDayEntity;
+
+        await sequelize.transaction(async (transaction) => {
+            await item.destroy({ transaction });
+            const remaining = await TrainingPlanItemEntity.findAll({
+                where: { dayId: day.id },
+                order: [['order', 'ASC']],
+                transaction,
+            });
+
+            for (let index = 0; index < remaining.length; index += 1) {
+                const current = remaining[index];
+                if (current.order !== index + 1) {
+                    await current.update({ order: index + 1 }, { transaction });
+                }
+            }
+        });
+
+        return (await TrainingPlanRepository.findById(day.planId)) as TrainingPlanEntity;
     }
 
     private static collectVideoIds(days: TrainingPlanDayInput[]): string[] {

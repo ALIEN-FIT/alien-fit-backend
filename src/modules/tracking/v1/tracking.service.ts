@@ -2,13 +2,22 @@ import { StatusCodes } from 'http-status-codes';
 import { HttpResponseError } from '../../../utils/appError.js';
 import { UserEntity } from '../../user/v1/entity/user.entity.js';
 import { TrackingRepository } from './tracking.repository.js';
-import { DailyTrackingEntity, ExtraFoodEntry, ExtraTrainingEntry, WaterIntakeRecord } from './entity/daily-tracking.entity.js';
+import {
+    DailyTrackingEntity,
+    ExtraFoodEntry,
+    ExtraTrainingEntry,
+    TrainingCompletionRecord,
+    WaterIntakeRecord,
+} from './entity/daily-tracking.entity.js';
 import { TrainingPlanItemEntity, TrainingPlanDayEntity, TrainingPlanEntity } from '../../plans/training/v1/entity/training-plan.entity.js';
 import { DietMealItemEntity, DietPlanDayEntity, DietPlanEntity } from '../../plans/diet/v1/entity/diet-plan.entity.js';
 
 interface MarkTrainingDonePayload {
     planItemId: string;
     date?: string;
+    doneSets?: number;
+    doneRepeats?: number;
+    note?: string;
 }
 
 interface MarkDietDonePayload {
@@ -132,12 +141,30 @@ export class TrackingService {
         const completed = new Set<string>(tracking.trainingCompletedItemIds ?? []);
         completed.add(item.id);
 
+        const completionRecords = [...(tracking.trainingCompletionRecords ?? [])];
+        const existingIndex = completionRecords.findIndex((record) => record.planItemId === item.id);
+
+        const completionRecord: TrainingCompletionRecord = {
+            planItemId: item.id,
+            doneSets: payload.doneSets ?? (item.sets ?? 0),
+            doneRepeats: payload.doneRepeats ?? (item.repeats ?? 0),
+            completedAt: new Date().toISOString(),
+            note: payload.note?.trim() || undefined,
+        };
+
+        if (existingIndex >= 0) {
+            completionRecords[existingIndex] = completionRecord;
+        } else {
+            completionRecords.push(completionRecord);
+        }
+
         const totalItems = item.day!.items?.length ?? 0;
         const trainingDone = totalItems > 0 && completed.size >= totalItems;
 
         await tracking.update({
             trainingCompletedItemIds: Array.from(completed),
             trainingDone,
+            trainingCompletionRecords: completionRecords,
         });
 
         return tracking;
@@ -232,6 +259,7 @@ export class TrackingService {
                 waterIntakeMl: 0,
                 waterIntakeRecords: [],
                 trainingCompletedItemIds: [],
+                trainingCompletionRecords: [],
                 dietCompletedItemIds: [],
                 extraTrainingEntries: [],
                 extraFoodEntries: [],
