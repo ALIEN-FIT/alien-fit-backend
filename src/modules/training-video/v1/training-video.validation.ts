@@ -67,6 +67,11 @@ export const trainingTagParamSchema = Joi.object({
     tagId: JoiCustomValidateObjectId('Training tag ID'),
 });
 
+export const trainingVideoTagParamSchema = Joi.object({
+    videoId: JoiCustomValidateObjectId('Training video ID'),
+    tagId: JoiCustomValidateObjectId('Training tag ID'),
+});
+
 export const listTrainingTagQuerySchema = Joi.object({
     search: Joi.string().optional(),
     page: Joi.number().integer().positive().optional(),

@@ -1,6 +1,6 @@
 import { FindAndCountOptions, Op, Transaction, WhereOptions } from 'sequelize';
 import { sequelize } from '../../../database/db-config.js';
-import { TrainingTagEntity, TrainingVideoEntity } from './entity/training-video.entity.js';
+import { TrainingTagEntity, TrainingVideoEntity, TrainingVideoTagEntity } from './entity/training-video.entity.js';
 
 const SEARCH_OPERATOR = sequelize.getDialect() === 'postgres' ? Op.iLike : Op.like;
 
@@ -112,6 +112,16 @@ export class TrainingVideoRepository {
 
     static async deleteVideo(id: string, transaction?: Transaction): Promise<number> {
         return TrainingVideoEntity.destroy({ where: { id }, transaction });
+    }
+
+    static async removeTagFromVideo(videoId: string, tagId: string, transaction?: Transaction): Promise<number> {
+        return TrainingVideoTagEntity.destroy({
+            where: {
+                trainingVideoId: videoId,
+                trainingTagId: tagId,
+            },
+            transaction,
+        });
     }
 
     static findByYoutubeVideoId(youtubeVideoId: string, transaction?: Transaction) {

@@ -81,6 +81,30 @@ export class TrainingVideoService {
         return { deleted: true };
     }
 
+    static async removeVideoFromTag(actor: UserEntity, videoId: string, tagId: string) {
+        assertAdmin(actor);
+
+        const [video, tag] = await Promise.all([
+            TrainingVideoRepository.findById(videoId),
+            TrainingTagRepository.findById(tagId),
+        ]);
+
+        if (!video) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training video not found');
+        }
+
+        if (!tag) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training tag not found');
+        }
+
+        const removed = await TrainingVideoRepository.removeTagFromVideo(videoId, tagId);
+        if (!removed) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training video is not assigned to this tag');
+        }
+
+        return { removed: true };
+    }
+
     static async replaceVideo(actor: UserEntity, videoId: string, payload: ReplaceTrainingVideoPayload) {
         assertAdmin(actor);
 

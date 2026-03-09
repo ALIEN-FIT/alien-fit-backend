@@ -11,6 +11,7 @@ import {
     updateTrainingVideoController,
     replaceTrainingVideoController,
     toggleTrainingVideoActiveController,
+    removeTrainingVideoFromTagController,
     youtubeOAuthCallbackController,
     createTrainingTagController,
     deleteTrainingTagController,
@@ -27,6 +28,7 @@ import {
     createTrainingTagSchema,
     updateTrainingTagSchema,
     trainingTagParamSchema,
+    trainingVideoTagParamSchema,
     listTrainingTagQuerySchema,
     syncTrainingVideosSchema,
 } from './training-video.validation.js';
@@ -104,6 +106,13 @@ trainingVideoRouterV1.patch(
     authorizeRoles(Roles.ADMIN),
     validateRequest(trainingVideoParamSchema),
     toggleTrainingVideoActiveController,
+);
+
+trainingVideoRouterV1.delete(
+    '/:videoId/tags/:tagId',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(trainingVideoTagParamSchema),
+    removeTrainingVideoFromTagController,
 );
 
 trainingVideoRouterV1.patch(
