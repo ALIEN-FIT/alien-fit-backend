@@ -46,6 +46,26 @@ export async function getSubscriptionStatusController(req: Request, res: Respons
     });
 }
 
+export async function freezeSubscriptionController(req: Request, res: Response): Promise<void> {
+    const userId = req.user!.id.toString();
+    const subscription = await SubscriptionService.freezeSubscription(userId);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { subscription },
+    });
+}
+
+export async function defrostSubscriptionController(req: Request, res: Response): Promise<void> {
+    const userId = req.user!.id.toString();
+    const subscription = await SubscriptionService.defrostSubscription(userId);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { subscription },
+    });
+}
+
 export async function createSubscriptionCheckoutController(req: Request, res: Response): Promise<void> {
     const userId = req.user!.id.toString();
     const { packageId, planType, currency, redirectionUrls } = req.body;

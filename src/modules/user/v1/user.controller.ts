@@ -59,11 +59,15 @@ export async function getUserByIdController(req: Request, res: Response): Promis
         data: {
             user,
             subscription: {
+                status: subscriptionStatus.status,
                 isSubscribed: subscriptionStatus.isSubscribed,
+                isFrozen: subscriptionStatus.isFrozen,
                 isFreeTier: subscriptionStatus.isFreeTier,
                 planType: subscriptionStatus.planType,
                 capabilities: subscriptionStatus.capabilities,
                 profileUpdateRequired: subscriptionStatus.profileUpdateRequired,
+                freezeStartedAt: subscriptionStatus.freezeStartedAt,
+                freezingEndDate: subscriptionStatus.freezingEndDate,
                 startDate: subscriptionStatus.subscription?.startDate ?? null,
                 endDate: subscriptionStatus.subscription?.endDate ?? null,
             },

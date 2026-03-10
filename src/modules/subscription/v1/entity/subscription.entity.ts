@@ -9,6 +9,9 @@ export class SubscriptionEntity extends Model {
     declare isSubscribed: boolean;
     declare startDate: Date | null;
     declare endDate: Date | null;
+    declare isFrozen: boolean;
+    declare frozenAt: Date | null;
+    declare freezingEndDate: Date | null;
     declare lastProfileUpdateAt: Date | null;
     declare nextProfileUpdateDue: Date | null;
     declare isActive: boolean;
@@ -41,6 +44,18 @@ SubscriptionEntity.init(
             allowNull: true,
         },
         endDate: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
+        isFrozen: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false,
+        },
+        frozenAt: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
+        freezingEndDate: {
             type: DataTypes.DATE,
             allowNull: true,
         },

@@ -6,6 +6,8 @@ import {
     activateSubscriptionController,
     renewSubscriptionController,
     getSubscriptionStatusController,
+    freezeSubscriptionController,
+    defrostSubscriptionController,
     createSubscriptionCheckoutController,
     fawaterakWebhookController,
 } from './subscription.controller.js';
@@ -43,6 +45,8 @@ subscriptionRouterV1.post(
 );
 
 subscriptionRouterV1.get('/status', auth, getSubscriptionStatusController);
+subscriptionRouterV1.post('/freeze', auth, freezeSubscriptionController);
+subscriptionRouterV1.post('/defrost', auth, defrostSubscriptionController);
 
 // User checkout
 subscriptionRouterV1.post(

@@ -37,7 +37,9 @@ All routes require authentication unless noted. Admin-only routes are explicitly
 | --- | --- | --- | --- |
 | `POST` | `/api/v1/subscription/activate/:userId` | Activate a four-week subscription for a user | Admin only |
 | `POST` | `/api/v1/subscription/renew/:userId` | Extend subscription four more weeks | Admin only |
-| `GET` | `/api/v1/subscription/status` | Fetch current user subscription status | Returns `isSubscribed` and profile cadence flags |
+| `POST` | `/api/v1/subscription/freeze` | Freeze the authenticated user's paid subscription | User only, active paid subscription required |
+| `POST` | `/api/v1/subscription/defrost` | Resume a previously frozen subscription | User only |
+| `GET` | `/api/v1/subscription/status` | Fetch current user subscription status | Returns lifecycle status, freeze metadata, and profile cadence flags |
 
 Sample: Activate subscription
 
@@ -64,6 +66,27 @@ Successful response:
   }
 }
 ```
+
+Sample: Freeze active subscription
+
+```http
+POST /api/v1/subscription/freeze
+Authorization: Bearer <user-token>
+```
+
+Sample: Resume frozen subscription
+
+```http
+POST /api/v1/subscription/defrost
+Authorization: Bearer <user-token>
+```
+
+Status response now includes:
+
+- `status`: `inactive`, `active`, or `frozen`
+- `isFrozen`: boolean shortcut for frozen state
+- `freezeStartedAt`: when the freeze began
+- `freezingEndDate`: the stored end date at the moment the subscription was frozen
 
 ### Plan Update Requests
 

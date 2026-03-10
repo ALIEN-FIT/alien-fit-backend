@@ -169,9 +169,9 @@ DELETE /api/v1/plans/diet/admin/meal/:mealItemId
 Authorization: Bearer <admin-token>
 ```
 
-### Tracking Update: Record Actual Completed Sets/Reps
+### Tracking Update: Record Actual Sets with Weights
 
-Existing endpoint now accepts more fields.
+The `/tracking/training/mark-done` endpoint now requires you to report each completed set with its repeats and weight so the ingestion model can render the same detail on training-plan endpoints.
 
 ```
 POST /api/v1/tracking/training/mark-done
@@ -184,14 +184,17 @@ Request body:
 {
   "planItemId": "5f392f9b-60df-4066-97b7-b19a9d2b8268",
   "date": "2026-03-09",
-  "doneSets": 4,
-  "doneRepeats": 12,
-  "note": "Last set to failure"
+  "note": "Back day feel",
+  "stes": [
+    { "repeats": 12, "weight": 20 },
+    { "repeats": 12, "weight": 20 },
+    { "repeats": 12, "weight": 20 }
+  ]
 }
 ```
 
-New tracking response field:
-- `trainingCompletionRecords`: array of `{ planItemId, doneSets, doneRepeats, completedAt, note? }`.
+Response now includes the same structured completion model: `trainingCompletionRecords` returns objects shaped as
+`{ planItemId, date, note?, stes: [{ repeats, weight }] }`.
 
 ### User Profile Update: InBody Image Support
 
@@ -608,6 +611,8 @@ Authorization: Bearer <token>
 - If user has free subscription → Returns default training plan (if configured)
 - If user has paid subscription → Returns custom training plan
 - Admin can view any user's plan
+- `GET /plans/training/me` behaves the same way for the requesting user.
+- Each returned exercise item now includes `excerciceMetadata` when completed. The metadata mirrors `trainingCompletionRecords` and exposes `{ planItemId, date, note?, stes: [{ repeats, weight }] }` so clients can render the exact sets saved via `/tracking/training/mark-done`.
 
 ### Get Diet Plan
 ```
