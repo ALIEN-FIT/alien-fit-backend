@@ -42,10 +42,13 @@ interface SerializedTrainingPlanItem {
 }
 
 interface SerializedExcerciceMetadata {
-    doneSets: number | null;
-    doneRepeats: number | null;
+    planItemId: string;
     note: string | null;
     date: string;
+    stes: Array<{
+        repeats: number;
+        weight: number;
+    }>;
 }
 
 interface SerializedSupersetItem {
@@ -138,7 +141,7 @@ async function serializeTrainingPlan(
                 isDone: itemDone,
                 excerciceMetadata: itemDone
                     ? buildExcerciceMetadata(
-                        item.sets ?? null,
+                        item.id,
                         item.repeats ?? null,
                         completionRecordMap.get(item.id),
                         dayDateKey,
@@ -401,7 +404,7 @@ async function processDays(
                 isDone: itemDone,
                 excerciceMetadata: itemDone
                     ? buildExcerciceMetadata(
-                        item.sets ?? null,
+                        item.id,
                         item.repeats ?? null,
                         completionRecordMap.get(item.id),
                         dayDateKey,
@@ -483,17 +486,32 @@ function toTrainingCompletionRecordMap(
 }
 
 function buildExcerciceMetadata(
-    sets: number | null,
+    planItemId: string,
     repeats: number | null,
     record: TrainingCompletionRecord | undefined,
     date: string,
 ): SerializedExcerciceMetadata {
     const note = typeof record?.note === 'string' ? record.note.trim() : '';
+    const normalizedStes = Array.isArray(record?.stes)
+        ? record.stes
+            .filter((set) => set && Number.isFinite(set.repeats) && Number.isFinite(set.weight))
+            .map((set) => ({
+                repeats: Number(set.repeats),
+                weight: Number(set.weight),
+            }))
+        : [];
+
+    const fallbackStes = repeats !== null
+        ? [{
+            repeats: Number(repeats),
+            weight: 0,
+        }]
+        : [];
 
     return {
-        doneSets: Number.isFinite(record?.doneSets) ? Number(record?.doneSets) : sets,
-        doneRepeats: Number.isFinite(record?.doneRepeats) ? Number(record?.doneRepeats) : repeats,
+        planItemId,
         note: note || null,
-        date,
+        date: record?.date ?? date,
+        stes: normalizedStes.length > 0 ? normalizedStes : fallbackStes,
     };
 }

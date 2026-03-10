@@ -19,10 +19,12 @@ export interface WaterIntakeRecord {
 
 export interface TrainingCompletionRecord {
     planItemId: string;
-    doneSets: number;
-    doneRepeats: number;
-    completedAt: string;
+    date: string;
     note?: string;
+    stes: Array<{
+        repeats: number;
+        weight: number;
+    }>;
 }
 
 export class DailyTrackingEntity extends Model {

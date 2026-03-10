@@ -15,8 +15,10 @@ import { DietMealItemEntity, DietPlanDayEntity, DietPlanEntity } from '../../pla
 interface MarkTrainingDonePayload {
     planItemId: string;
     date?: string;
-    doneSets?: number;
-    doneRepeats?: number;
+    stes: Array<{
+        repeats: number;
+        weight: number;
+    }>;
     note?: string;
 }
 
@@ -146,10 +148,12 @@ export class TrackingService {
 
         const completionRecord: TrainingCompletionRecord = {
             planItemId: item.id,
-            doneSets: payload.doneSets ?? (item.sets ?? 0),
-            doneRepeats: payload.doneRepeats ?? (item.repeats ?? 0),
-            completedAt: new Date().toISOString(),
+            date: expectedDate.toISOString().split('T')[0],
             note: payload.note?.trim() || undefined,
+            stes: payload.stes.map((set) => ({
+                repeats: Number(set.repeats),
+                weight: Number(set.weight),
+            })),
         };
 
         if (existingIndex >= 0) {
