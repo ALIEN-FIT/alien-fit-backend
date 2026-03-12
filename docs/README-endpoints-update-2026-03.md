@@ -58,17 +58,67 @@ Request body:
 }
 ```
 
-Defrost options:
+Defrost request flow:
 
 ```http
 POST /api/v1/subscription/defrost
+```
+
+Request body:
+
+```json
+{
+  "note": "Optional user note"
+}
+```
+
+List pending defrost requests (admin):
+
+```http
+GET /api/v1/subscription/defrost/requests/pending
+```
+
+Approve defrost request (admin):
+
+```http
+POST /api/v1/subscription/defrost/requests/:requestId/approve
+```
+
+Request body:
+
+```json
+{
+  "note": "Optional admin note"
+}
+```
+
+Decline defrost request (admin):
+
+```http
+POST /api/v1/subscription/defrost/requests/:requestId/decline
+```
+
+Request body:
+
+```json
+{
+  "note": "Optional decline reason"
+}
+```
+
+Admin override defrost (optional):
+
+```http
 POST /api/v1/subscription/defrost/:userId
 ```
 
 Rules:
 - One pending freeze request per user.
+- One pending defrost request per user.
 - Admin can approve/decline.
 - If approval `freezeDays` is `null`, user requested days are used.
+- Defrost requests require a frozen subscription.
+- User defrost endpoint creates a request; admin approval is required unless using the admin override route.
 - Auto-defrost is applied once freeze duration ends.
 
 ## 1) Training Video Admin: Replace Video Everywhere
@@ -351,3 +401,4 @@ npm run migration:up
 
 New migration:
 - `src/database/migrations/20260309120000-add-profile-and-tracking-reminder-fields.cjs`
+- `src/database/migrations/20260312123000-create-subscription-defrost-requests.cjs`

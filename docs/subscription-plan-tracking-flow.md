@@ -41,8 +41,11 @@ All routes require authentication unless noted. Admin-only routes are explicitly
 | `GET` | `/api/v1/subscription/freeze/requests/pending` | List pending freeze requests | Admin only |
 | `POST` | `/api/v1/subscription/freeze/requests/:requestId/approve` | Approve pending freeze request and freeze subscription | Admin only, can override freeze days or send `null` |
 | `POST` | `/api/v1/subscription/freeze/requests/:requestId/decline` | Decline pending freeze request | Admin only |
-| `POST` | `/api/v1/subscription/defrost` | Resume a previously frozen subscription | User only |
-| `POST` | `/api/v1/subscription/defrost/:userId` | Resume a user's frozen subscription | Admin only |
+| `POST` | `/api/v1/subscription/defrost` | Create defrost request for frozen subscription | User only |
+| `GET` | `/api/v1/subscription/defrost/requests/pending` | List pending defrost requests | Admin only |
+| `POST` | `/api/v1/subscription/defrost/requests/:requestId/approve` | Approve pending defrost request and resume subscription | Admin only |
+| `POST` | `/api/v1/subscription/defrost/requests/:requestId/decline` | Decline pending defrost request | Admin only |
+| `POST` | `/api/v1/subscription/defrost/:userId` | Resume a user's frozen subscription | Admin only (override) |
 | `GET` | `/api/v1/subscription/status` | Fetch current user subscription status | Returns lifecycle status, freeze metadata, and profile cadence flags |
 
 Sample: Activate subscription
@@ -122,11 +125,16 @@ Content-Type: application/json
 }
 ```
 
-Sample: Resume frozen subscription
+Sample: User creates defrost request
 
 ```http
 POST /api/v1/subscription/defrost
 Authorization: Bearer <user-token>
+Content-Type: application/json
+
+{
+  "note": "Ready to resume training early"
+}
 ```
 
 Status response now includes:
@@ -141,7 +149,12 @@ Freeze request rules:
 - User can have only one pending freeze request at a time.
 - Admin can approve or decline pending requests.
 - When approving, admin may pass `freezeDays` or `null`; `null` means use user requested days.
-- Both admin and user can defrost at any time.
+
+Defrost request rules:
+
+- User can have only one pending defrost request at a time.
+- Only frozen subscriptions can request defrost.
+- Admin can approve or decline pending defrost requests.
 
 ### Plan Update Requests
 

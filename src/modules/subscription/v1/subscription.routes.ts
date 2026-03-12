@@ -10,7 +10,10 @@ import {
     listPendingFreezeRequestsController,
     approveFreezeRequestController,
     declineFreezeRequestController,
-    defrostSubscriptionController,
+    createDefrostRequestController,
+    listPendingDefrostRequestsController,
+    approveDefrostRequestController,
+    declineDefrostRequestController,
     adminDefrostSubscriptionController,
     createSubscriptionCheckoutController,
     fawaterakWebhookController,
@@ -19,8 +22,11 @@ import {
     subscriptionActivateSchema,
     subscriptionRenewSchema,
     subscriptionFreezeRequestSchema,
+    subscriptionDefrostRequestSchema,
     subscriptionApproveFreezeRequestSchema,
     subscriptionDeclineFreezeRequestSchema,
+    subscriptionApproveDefrostRequestSchema,
+    subscriptionDeclineDefrostRequestSchema,
     subscriptionAdminDefrostSchema,
     subscriptionCheckoutSchema,
     fawaterakWebhookSchema,
@@ -54,7 +60,12 @@ subscriptionRouterV1.post(
 
 subscriptionRouterV1.get('/status', auth, getSubscriptionStatusController);
 subscriptionRouterV1.post('/freeze', auth, validateRequest(subscriptionFreezeRequestSchema), freezeSubscriptionController);
-subscriptionRouterV1.post('/defrost', auth, defrostSubscriptionController);
+subscriptionRouterV1.post(
+    '/defrost',
+    auth,
+    validateRequest(subscriptionDefrostRequestSchema),
+    createDefrostRequestController,
+);
 
 subscriptionRouterV1.get(
     '/freeze/requests/pending',
@@ -77,6 +88,29 @@ subscriptionRouterV1.post(
     authorizeRoles(Roles.ADMIN),
     validateRequest(subscriptionDeclineFreezeRequestSchema),
     declineFreezeRequestController,
+);
+
+subscriptionRouterV1.get(
+    '/defrost/requests/pending',
+    auth,
+    authorizeRoles(Roles.ADMIN),
+    listPendingDefrostRequestsController,
+);
+
+subscriptionRouterV1.post(
+    '/defrost/requests/:requestId/approve',
+    auth,
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(subscriptionApproveDefrostRequestSchema),
+    approveDefrostRequestController,
+);
+
+subscriptionRouterV1.post(
+    '/defrost/requests/:requestId/decline',
+    auth,
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(subscriptionDeclineDefrostRequestSchema),
+    declineDefrostRequestController,
 );
 
 subscriptionRouterV1.post(

@@ -60,13 +60,70 @@ Request body:
 }
 ```
 
-Defrost options:
-- User: `POST /api/v1/subscription/defrost`
-- Admin: `POST /api/v1/subscription/defrost/:userId`
+### Subscription Defrost Request Flow
+
+User creates defrost request (subscription must already be frozen):
+
+```
+POST /api/v1/subscription/defrost
+Authorization: Bearer <user-token>
+```
+
+Request body:
+
+```json
+{
+  "note": "Optional user note"
+}
+```
+
+Admin lists pending defrost requests:
+
+```
+GET /api/v1/subscription/defrost/requests/pending
+Authorization: Bearer <admin-token>
+```
+
+Admin approves request:
+
+```
+POST /api/v1/subscription/defrost/requests/:requestId/approve
+Authorization: Bearer <admin-token>
+```
+
+Request body:
+
+```json
+{
+  "note": "Optional admin note"
+}
+```
+
+Admin declines request:
+
+```
+POST /api/v1/subscription/defrost/requests/:requestId/decline
+Authorization: Bearer <admin-token>
+```
+
+Request body:
+
+```json
+{
+  "note": "Optional decline reason"
+}
+```
+
+Admin override defrost (optional):
+
+```
+POST /api/v1/subscription/defrost/:userId
+Authorization: Bearer <admin-token>
+```
 
 Behavior:
-- User/admin can defrost at any time.
-- When freeze period ends, user is auto-defrosted.
+- User cannot defrost directly; admin approval is required.
+- Auto-defrost still runs once the freeze period ends.
 
 ### Training Video Admin: Replace Video Everywhere
 
@@ -296,6 +353,7 @@ npm run migration:up
 
 New migration file:
 - `src/database/migrations/20260309120000-add-profile-and-tracking-reminder-fields.cjs`
+- `src/database/migrations/20260312123000-create-subscription-defrost-requests.cjs`
 
 ## Authentication Endpoints
 

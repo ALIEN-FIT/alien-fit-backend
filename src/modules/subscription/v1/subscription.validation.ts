@@ -22,6 +22,10 @@ export const subscriptionFreezeRequestSchema = Joi.object({
     note: Joi.string().trim().max(1000).allow('', null).optional(),
 });
 
+export const subscriptionDefrostRequestSchema = Joi.object({
+    note: Joi.string().trim().max(1000).allow('', null).optional(),
+});
+
 export const subscriptionApproveFreezeRequestSchema = Joi.object({
     requestId: JoiCustomValidateObjectId('Freeze request ID', true),
     freezeDays: Joi.number().integer().min(1).max(365).allow(null).optional(),
@@ -30,6 +34,16 @@ export const subscriptionApproveFreezeRequestSchema = Joi.object({
 
 export const subscriptionDeclineFreezeRequestSchema = Joi.object({
     requestId: JoiCustomValidateObjectId('Freeze request ID', true),
+    note: Joi.string().trim().max(1000).allow('', null).optional(),
+});
+
+export const subscriptionApproveDefrostRequestSchema = Joi.object({
+    requestId: JoiCustomValidateObjectId('Defrost request ID', true),
+    note: Joi.string().trim().max(1000).allow('', null).optional(),
+});
+
+export const subscriptionDeclineDefrostRequestSchema = Joi.object({
+    requestId: JoiCustomValidateObjectId('Defrost request ID', true),
     note: Joi.string().trim().max(1000).allow('', null).optional(),
 });
 

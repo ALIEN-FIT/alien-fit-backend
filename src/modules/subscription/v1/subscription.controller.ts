@@ -92,13 +92,49 @@ export async function declineFreezeRequestController(req: Request, res: Response
     });
 }
 
-export async function defrostSubscriptionController(req: Request, res: Response): Promise<void> {
+export async function createDefrostRequestController(req: Request, res: Response): Promise<void> {
     const userId = req.user!.id.toString();
-    const subscription = await SubscriptionService.defrostSubscription(userId);
+    const { note } = req.body ?? {};
+    const request = await SubscriptionService.createDefrostRequest(userId, note);
 
     res.status(StatusCodes.OK).json({
         status: 'success',
-        data: { subscription },
+        data: { request },
+    });
+}
+
+export async function listPendingDefrostRequestsController(_req: Request, res: Response): Promise<void> {
+    const requests = await SubscriptionService.listPendingDefrostRequests();
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { requests },
+    });
+}
+
+export async function approveDefrostRequestController(req: Request, res: Response): Promise<void> {
+    const adminId = req.user!.id.toString();
+    const { requestId } = req.params;
+    const { note } = req.body;
+
+    const result = await SubscriptionService.approveDefrostRequest(requestId, adminId, note);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: result,
+    });
+}
+
+export async function declineDefrostRequestController(req: Request, res: Response): Promise<void> {
+    const adminId = req.user!.id.toString();
+    const { requestId } = req.params;
+    const { note } = req.body;
+
+    const request = await SubscriptionService.declineDefrostRequest(requestId, adminId, note);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { request },
     });
 }
 

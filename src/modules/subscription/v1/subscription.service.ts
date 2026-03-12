@@ -4,7 +4,9 @@ import { UserService } from '../../user/v1/user.service.js';
 import { SubscriptionRepository } from './subscription.repository.js';
 import { SubscriptionEntity } from './entity/subscription.entity.js';
 import { SubscriptionFreezeRequestEntity } from './entity/subscription-freeze-request.entity.js';
+import { SubscriptionDefrostRequestEntity } from './entity/subscription-defrost-request.entity.js';
 import { SubscriptionFreezeRequestRepository } from './subscription-freeze-request.repository.js';
+import { SubscriptionDefrostRequestRepository } from './subscription-defrost-request.repository.js';
 import { addDays, differenceInCalendarDaysUTC, startOfDayUTC } from '../../../utils/date.utils.js';
 import { getCapabilitiesForPlanType, SUBSCRIPTION_PLAN_TYPE_SET, SubscriptionPlanType } from '../../subscription-packages/v1/subscription-plan-type.js';
 
@@ -364,6 +366,88 @@ export class SubscriptionService {
         await request.update({
             status: 'declined',
             approvedDays: null,
+            decisionNote: decisionNote ?? null,
+            resolvedBy: adminId,
+            resolvedAt: new Date(),
+        });
+
+        return request;
+    }
+
+    static async createDefrostRequest(
+        userId: string,
+        requestedNote?: string | null,
+    ): Promise<SubscriptionDefrostRequestEntity> {
+        await UserService.getUserById(userId);
+
+        const subscription = await hydrateSubscription(await SubscriptionRepository.findByUserId(userId));
+        if (!subscription) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Subscription not found');
+        }
+
+        const lifecycleStatus = getLifecycleStatus(subscription);
+        if (lifecycleStatus !== 'frozen') {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Only frozen subscriptions can request defrost');
+        }
+
+        const pending = await SubscriptionDefrostRequestRepository.findPendingByUserId(userId);
+        if (pending) {
+            throw new HttpResponseError(StatusCodes.CONFLICT, 'User already has a pending defrost request');
+        }
+
+        return SubscriptionDefrostRequestRepository.create({
+            userId,
+            status: 'pending',
+            requestedNote: requestedNote ?? null,
+        });
+    }
+
+    static async listPendingDefrostRequests(): Promise<SubscriptionDefrostRequestEntity[]> {
+        return SubscriptionDefrostRequestRepository.listPending();
+    }
+
+    static async approveDefrostRequest(
+        requestId: string,
+        adminId: string,
+        decisionNote?: string | null,
+    ): Promise<{ request: SubscriptionDefrostRequestEntity; subscription: SubscriptionEntity }> {
+        await UserService.getUserById(adminId);
+        const request = await SubscriptionDefrostRequestRepository.findById(requestId);
+        if (!request) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Defrost request not found');
+        }
+        if (request.status !== 'pending') {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Defrost request is already resolved');
+        }
+
+        const subscription = await this.defrostSubscription(request.userId);
+
+        await request.update({
+            status: 'approved',
+            decisionNote: decisionNote ?? null,
+            resolvedBy: adminId,
+            resolvedAt: new Date(),
+        });
+
+        return { request, subscription };
+    }
+
+    static async declineDefrostRequest(
+        requestId: string,
+        adminId: string,
+        decisionNote?: string | null,
+    ): Promise<SubscriptionDefrostRequestEntity> {
+        await UserService.getUserById(adminId);
+        const request = await SubscriptionDefrostRequestRepository.findById(requestId);
+        if (!request) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Defrost request not found');
+        }
+        if (request.status !== 'pending') {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Defrost request is already resolved');
+        }
+
+        await request.update({
+            status: 'declined',
             decisionNote: decisionNote ?? null,
             resolvedBy: adminId,
             resolvedAt: new Date(),
