@@ -48,7 +48,53 @@ export async function getSubscriptionStatusController(req: Request, res: Respons
 
 export async function freezeSubscriptionController(req: Request, res: Response): Promise<void> {
     const userId = req.user!.id.toString();
-    const subscription = await SubscriptionService.freezeSubscription(userId);
+    const { requestedDays, note } = req.body;
+    const request = await SubscriptionService.createFreezeRequest(userId, requestedDays, note);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { request },
+    });
+}
+
+export async function listPendingFreezeRequestsController(_req: Request, res: Response): Promise<void> {
+    const requests = await SubscriptionService.listPendingFreezeRequests();
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { requests },
+    });
+}
+
+export async function approveFreezeRequestController(req: Request, res: Response): Promise<void> {
+    const adminId = req.user!.id.toString();
+    const { requestId } = req.params;
+    const { freezeDays, note } = req.body;
+
+    const result = await SubscriptionService.approveFreezeRequest(requestId, adminId, freezeDays, note);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: result,
+    });
+}
+
+export async function declineFreezeRequestController(req: Request, res: Response): Promise<void> {
+    const adminId = req.user!.id.toString();
+    const { requestId } = req.params;
+    const { note } = req.body;
+
+    const request = await SubscriptionService.declineFreezeRequest(requestId, adminId, note);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { request },
+    });
+}
+
+export async function defrostSubscriptionController(req: Request, res: Response): Promise<void> {
+    const userId = req.user!.id.toString();
+    const subscription = await SubscriptionService.defrostSubscription(userId);
 
     res.status(StatusCodes.OK).json({
         status: 'success',
@@ -56,8 +102,8 @@ export async function freezeSubscriptionController(req: Request, res: Response):
     });
 }
 
-export async function defrostSubscriptionController(req: Request, res: Response): Promise<void> {
-    const userId = req.user!.id.toString();
+export async function adminDefrostSubscriptionController(req: Request, res: Response): Promise<void> {
+    const { userId } = req.params;
     const subscription = await SubscriptionService.defrostSubscription(userId);
 
     res.status(StatusCodes.OK).json({

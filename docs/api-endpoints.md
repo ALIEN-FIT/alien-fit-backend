@@ -4,6 +4,70 @@
 
 All endpoints below are already mounted in the current backend.
 
+### Subscription Freeze Request Flow
+
+User creates freeze request (one pending request allowed at a time):
+
+```
+POST /api/v1/subscription/freeze
+Authorization: Bearer <user-token>
+```
+
+Request body:
+
+```json
+{
+  "requestedDays": 7,
+  "note": "Optional user note"
+}
+```
+
+Admin lists pending freeze requests:
+
+```
+GET /api/v1/subscription/freeze/requests/pending
+Authorization: Bearer <admin-token>
+```
+
+Admin approves request (optional override days; `null` = use user requested days):
+
+```
+POST /api/v1/subscription/freeze/requests/:requestId/approve
+Authorization: Bearer <admin-token>
+```
+
+Request body:
+
+```json
+{
+  "freezeDays": null,
+  "note": "Optional admin note"
+}
+```
+
+Admin declines request:
+
+```
+POST /api/v1/subscription/freeze/requests/:requestId/decline
+Authorization: Bearer <admin-token>
+```
+
+Request body:
+
+```json
+{
+  "note": "Optional decline reason"
+}
+```
+
+Defrost options:
+- User: `POST /api/v1/subscription/defrost`
+- Admin: `POST /api/v1/subscription/defrost/:userId`
+
+Behavior:
+- User/admin can defrost at any time.
+- When freeze period ends, user is auto-defrosted.
+
 ### Training Video Admin: Replace Video Everywhere
 
 Replace a video reference across training plans and static plans, then optionally delete old video.

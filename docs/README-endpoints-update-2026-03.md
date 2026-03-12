@@ -2,6 +2,75 @@
 
 This file documents newly added or updated endpoints and request bodies based on the latest backend changes.
 
+## 0) Subscription Freeze Request Lifecycle
+
+Create freeze request (user):
+
+```http
+POST /api/v1/subscription/freeze
+Authorization: Bearer <user-token>
+```
+
+Request body:
+
+```json
+{
+  "requestedDays": 7,
+  "note": "Optional user note"
+}
+```
+
+List pending requests (admin):
+
+```http
+GET /api/v1/subscription/freeze/requests/pending
+Authorization: Bearer <admin-token>
+```
+
+Approve request (admin; optional override days):
+
+```http
+POST /api/v1/subscription/freeze/requests/:requestId/approve
+Authorization: Bearer <admin-token>
+```
+
+Request body:
+
+```json
+{
+  "freezeDays": null,
+  "note": "Optional admin note"
+}
+```
+
+Decline request (admin):
+
+```http
+POST /api/v1/subscription/freeze/requests/:requestId/decline
+Authorization: Bearer <admin-token>
+```
+
+Request body:
+
+```json
+{
+  "note": "Optional decline reason"
+}
+```
+
+Defrost options:
+
+```http
+POST /api/v1/subscription/defrost
+POST /api/v1/subscription/defrost/:userId
+```
+
+Rules:
+- One pending freeze request per user.
+- Admin can approve/decline.
+- If approval `freezeDays` is `null`, user requested days are used.
+- Auto-defrost is applied once freeze duration ends.
+
 ## 1) Training Video Admin: Replace Video Everywhere
 
 Endpoint:

@@ -3,6 +3,8 @@ import { HttpResponseError } from '../../../utils/appError.js';
 import { UserService } from '../../user/v1/user.service.js';
 import { SubscriptionRepository } from './subscription.repository.js';
 import { SubscriptionEntity } from './entity/subscription.entity.js';
+import { SubscriptionFreezeRequestEntity } from './entity/subscription-freeze-request.entity.js';
+import { SubscriptionFreezeRequestRepository } from './subscription-freeze-request.repository.js';
 import { addDays, differenceInCalendarDaysUTC, startOfDayUTC } from '../../../utils/date.utils.js';
 import { getCapabilitiesForPlanType, SUBSCRIPTION_PLAN_TYPE_SET, SubscriptionPlanType } from '../../subscription-packages/v1/subscription-plan-type.js';
 
@@ -40,6 +42,52 @@ function computeHasRemainingTime(subscription: SubscriptionEntity | null, refere
     return subscription.endDate.getTime() >= referenceDate.getTime();
 }
 
+async function defrostSubscriptionRecord(
+    subscription: SubscriptionEntity,
+    defrostDate = new Date(),
+): Promise<SubscriptionEntity> {
+    const normalizedDefrostDate = startOfDayUTC(defrostDate);
+
+    if (!subscription.isFrozen) {
+        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Subscription is not frozen');
+    }
+
+    if (!subscription.frozenAt || !subscription.freezingEndDate || !subscription.endDate) {
+        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Frozen subscription data is incomplete');
+    }
+
+    const remainingFrozenDays = differenceInCalendarDaysUTC(subscription.freezingEndDate, normalizedDefrostDate);
+    const endDate = addDays(subscription.endDate, -remainingFrozenDays);
+    const isActive = endDate.getTime() >= normalizedDefrostDate.getTime();
+
+    await subscription.update({
+        endDate,
+        isFrozen: false,
+        frozenAt: null,
+        freezingEndDate: null,
+        isActive,
+        isSubscribed: isActive,
+    });
+
+    return subscription;
+}
+
+async function autoDefrostIfNeeded(
+    subscription: SubscriptionEntity | null,
+    referenceDate = new Date(),
+): Promise<SubscriptionEntity | null> {
+    if (!subscription || !subscription.isFrozen || !subscription.freezingEndDate) {
+        return subscription;
+    }
+
+    const normalizedReferenceDate = startOfDayUTC(referenceDate);
+    if (normalizedReferenceDate.getTime() < subscription.freezingEndDate.getTime()) {
+        return subscription;
+    }
+
+    return defrostSubscriptionRecord(subscription, normalizedReferenceDate);
+}
+
 function getLifecycleStatus(
     subscription: SubscriptionEntity | null,
     referenceDate = new Date(),
@@ -54,6 +102,8 @@ function getLifecycleStatus(
 }
 
 async function hydrateSubscription(subscription: SubscriptionEntity | null): Promise<SubscriptionEntity | null> {
+    subscription = await autoDefrostIfNeeded(subscription);
+
     if (!subscription) {
         return null;
     }
@@ -159,9 +209,7 @@ export class SubscriptionService {
         await UserService.getUserById(userId);
         const now = new Date();
         const existing = await SubscriptionRepository.findByUserId(userId);
-        const baseDate = existing?.isFrozen && existing.freezingEndDate
-            ? existing.freezingEndDate
-            : (existing?.endDate && existing.endDate > now ? existing.endDate : now);
+        const baseDate = existing?.endDate && existing.endDate > now ? existing.endDate : now;
         const endDate = addDays(baseDate, SUBSCRIPTION_CYCLE_DAYS * cycles);
         const normalizedPlanType = normalizePlanType(planType ?? existing?.planType ?? 'both');
 
@@ -181,8 +229,13 @@ export class SubscriptionService {
         return hydrateSubscription(subscription) as Promise<SubscriptionEntity>;
     }
 
-    static async freezeSubscription(userId: string, freezeDate = new Date()): Promise<SubscriptionEntity> {
+    static async freezeSubscription(userId: string, freezeDays: number, freezeDate = new Date()): Promise<SubscriptionEntity> {
         await UserService.getUserById(userId);
+
+        if (!Number.isInteger(freezeDays) || freezeDays < 1) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Freeze days must be a positive integer');
+        }
+
         const normalizedFreezeDate = startOfDayUTC(freezeDate);
 
         const subscription = await hydrateSubscription(
@@ -206,10 +259,14 @@ export class SubscriptionService {
             throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Only active paid subscriptions can be frozen');
         }
 
+        const freezingEndDate = addDays(normalizedFreezeDate, freezeDays);
+        const endDate = addDays(subscription.endDate, freezeDays);
+
         await subscription.update({
             isFrozen: true,
             frozenAt: normalizedFreezeDate,
-            freezingEndDate: subscription.endDate,
+            freezingEndDate,
+            endDate,
             isActive: false,
             isSubscribed: false,
         });
@@ -217,37 +274,112 @@ export class SubscriptionService {
         return subscription;
     }
 
+    static async createFreezeRequest(userId: string, requestedDays: number, requestedNote?: string | null): Promise<SubscriptionFreezeRequestEntity> {
+        await UserService.getUserById(userId);
+
+        if (!Number.isInteger(requestedDays) || requestedDays < 1) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Requested freeze days must be a positive integer');
+        }
+
+        const subscription = await hydrateSubscription(await SubscriptionRepository.findByUserId(userId));
+        if (!subscription) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Subscription not found');
+        }
+        if (subscription.isFree) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Free subscriptions cannot be frozen');
+        }
+
+        const lifecycleStatus = getLifecycleStatus(subscription);
+        if (lifecycleStatus === 'frozen') {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Subscription is already frozen');
+        }
+        if (lifecycleStatus !== 'active') {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Only active paid subscriptions can request freezing');
+        }
+
+        const pending = await SubscriptionFreezeRequestRepository.findPendingByUserId(userId);
+        if (pending) {
+            throw new HttpResponseError(StatusCodes.CONFLICT, 'User already has a pending freeze request');
+        }
+
+        return SubscriptionFreezeRequestRepository.create({
+            userId,
+            status: 'pending',
+            requestedDays,
+            requestedNote: requestedNote ?? null,
+        });
+    }
+
+    static async listPendingFreezeRequests(): Promise<SubscriptionFreezeRequestEntity[]> {
+        return SubscriptionFreezeRequestRepository.listPending();
+    }
+
+    static async approveFreezeRequest(
+        requestId: string,
+        adminId: string,
+        approvedDays?: number | null,
+        decisionNote?: string | null,
+    ): Promise<{ request: SubscriptionFreezeRequestEntity; subscription: SubscriptionEntity }> {
+        await UserService.getUserById(adminId);
+        const request = await SubscriptionFreezeRequestRepository.findById(requestId);
+        if (!request) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Freeze request not found');
+        }
+        if (request.status !== 'pending') {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Freeze request is already resolved');
+        }
+
+        const effectiveFreezeDays = approvedDays ?? request.requestedDays;
+        if (!Number.isInteger(effectiveFreezeDays) || effectiveFreezeDays < 1) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Freeze days must be a positive integer');
+        }
+
+        const subscription = await this.freezeSubscription(request.userId, effectiveFreezeDays);
+
+        await request.update({
+            status: 'approved',
+            approvedDays: effectiveFreezeDays,
+            decisionNote: decisionNote ?? null,
+            resolvedBy: adminId,
+            resolvedAt: new Date(),
+        });
+
+        return { request, subscription };
+    }
+
+    static async declineFreezeRequest(
+        requestId: string,
+        adminId: string,
+        decisionNote?: string | null,
+    ): Promise<SubscriptionFreezeRequestEntity> {
+        await UserService.getUserById(adminId);
+        const request = await SubscriptionFreezeRequestRepository.findById(requestId);
+        if (!request) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Freeze request not found');
+        }
+        if (request.status !== 'pending') {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Freeze request is already resolved');
+        }
+
+        await request.update({
+            status: 'declined',
+            approvedDays: null,
+            decisionNote: decisionNote ?? null,
+            resolvedBy: adminId,
+            resolvedAt: new Date(),
+        });
+
+        return request;
+    }
+
     static async defrostSubscription(userId: string, defrostDate = new Date()): Promise<SubscriptionEntity> {
         await UserService.getUserById(userId);
-        const normalizedDefrostDate = startOfDayUTC(defrostDate);
-
         const subscription = await SubscriptionRepository.findByUserId(userId);
         if (!subscription) {
             throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Subscription not found');
         }
 
-        if (!subscription.isFrozen) {
-            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Subscription is not frozen');
-        }
-
-        if (!subscription.frozenAt || !subscription.freezingEndDate) {
-            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Frozen subscription data is incomplete');
-        }
-
-        const frozenDays = differenceInCalendarDaysUTC(normalizedDefrostDate, subscription.frozenAt);
-        const endDate = addDays(subscription.freezingEndDate, frozenDays);
-        const isActive = endDate.getTime() >= normalizedDefrostDate.getTime();
-
-        await subscription.update({
-            endDate,
-            isFrozen: false,
-            frozenAt: null,
-            freezingEndDate: null,
-            isActive,
-            isSubscribed: isActive,
-        });
-
-        return subscription;
+        return defrostSubscriptionRecord(subscription, defrostDate);
     }
 
     static async getStatus(userId: string): Promise<SubscriptionStatus> {
