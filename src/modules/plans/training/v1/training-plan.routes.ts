@@ -6,11 +6,19 @@ import {
     createTrainingPlanWeekController,
     getTrainingPlanController,
     getMyTrainingPlanController,
+    adminUpdateTrainingPlanDayController,
+    adminClearTrainingPlanDayController,
+    adminUpdateTrainingPlanItemController,
+    adminDeleteTrainingPlanItemController,
 } from './training-plan.controller.js';
 import {
     createTrainingPlanSchema,
     trainingPlanUserParamSchema,
     getMyTrainingPlanQuerySchema,
+    trainingPlanAdminDayParamSchema,
+    trainingPlanItemParamSchema,
+    updateTrainingPlanDaySchema,
+    updateTrainingPlanItemSchema,
 } from './training-plan.validation.js';
 
 export const trainingPlanRouterV1 = express.Router();
@@ -34,4 +42,39 @@ trainingPlanRouterV1.get(
     '/:userId',
     validateRequest(trainingPlanUserParamSchema),
     getTrainingPlanController,
+);
+
+trainingPlanRouterV1.patch(
+    '/admin/:planId/day/:dayIndex',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(updateTrainingPlanDaySchema.concat(trainingPlanAdminDayParamSchema)),
+    adminUpdateTrainingPlanDayController,
+);
+
+trainingPlanRouterV1.delete(
+    '/admin/:planId/day/:dayIndex',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(trainingPlanAdminDayParamSchema),
+    adminClearTrainingPlanDayController,
+);
+
+trainingPlanRouterV1.patch(
+    '/admin/item/:itemId',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(updateTrainingPlanItemSchema.concat(trainingPlanItemParamSchema)),
+    adminUpdateTrainingPlanItemController,
+);
+
+trainingPlanRouterV1.patch(
+    '/item/:itemId',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(updateTrainingPlanItemSchema.concat(trainingPlanItemParamSchema)),
+    adminUpdateTrainingPlanItemController,
+);
+
+trainingPlanRouterV1.delete(
+    '/admin/item/:itemId',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(trainingPlanItemParamSchema),
+    adminDeleteTrainingPlanItemController,
 );

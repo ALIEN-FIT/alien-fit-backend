@@ -6,12 +6,22 @@ import {
     activateSubscriptionController,
     renewSubscriptionController,
     getSubscriptionStatusController,
+    freezeSubscriptionController,
+    listPendingFreezeRequestsController,
+    approveFreezeRequestController,
+    declineFreezeRequestController,
+    defrostSubscriptionController,
+    adminDefrostSubscriptionController,
     createSubscriptionCheckoutController,
     fawaterakWebhookController,
 } from './subscription.controller.js';
 import {
     subscriptionActivateSchema,
     subscriptionRenewSchema,
+    subscriptionFreezeRequestSchema,
+    subscriptionApproveFreezeRequestSchema,
+    subscriptionDeclineFreezeRequestSchema,
+    subscriptionAdminDefrostSchema,
     subscriptionCheckoutSchema,
     fawaterakWebhookSchema,
 } from './subscription.validation.js';
@@ -43,6 +53,39 @@ subscriptionRouterV1.post(
 );
 
 subscriptionRouterV1.get('/status', auth, getSubscriptionStatusController);
+subscriptionRouterV1.post('/freeze', auth, validateRequest(subscriptionFreezeRequestSchema), freezeSubscriptionController);
+subscriptionRouterV1.post('/defrost', auth, defrostSubscriptionController);
+
+subscriptionRouterV1.get(
+    '/freeze/requests/pending',
+    auth,
+    authorizeRoles(Roles.ADMIN),
+    listPendingFreezeRequestsController,
+);
+
+subscriptionRouterV1.post(
+    '/freeze/requests/:requestId/approve',
+    auth,
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(subscriptionApproveFreezeRequestSchema),
+    approveFreezeRequestController,
+);
+
+subscriptionRouterV1.post(
+    '/freeze/requests/:requestId/decline',
+    auth,
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(subscriptionDeclineFreezeRequestSchema),
+    declineFreezeRequestController,
+);
+
+subscriptionRouterV1.post(
+    '/defrost/:userId',
+    auth,
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(subscriptionAdminDefrostSchema),
+    adminDefrostSubscriptionController,
+);
 
 // User checkout
 subscriptionRouterV1.post(

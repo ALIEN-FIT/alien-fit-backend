@@ -6,7 +6,7 @@ import { UserEntity } from '../../../user/v1/entity/user.entity.js';
 import { TrainingVideoService } from '../../../training-video/v1/training-video.service.js';
 import { TrainingVideoEntity } from '../../../training-video/v1/entity/training-video.entity.js';
 import { TrackingRepository } from '../../../tracking/v1/tracking.repository.js';
-import { DailyTrackingEntity } from '../../../tracking/v1/entity/daily-tracking.entity.js';
+import { DailyTrackingEntity, TrainingCompletionRecord } from '../../../tracking/v1/entity/daily-tracking.entity.js';
 
 interface SerializedTrainingPlan {
     id: string;
@@ -38,6 +38,17 @@ interface SerializedTrainingPlanItem {
     extraVideos: Array<{ trainingVideo: SerializedTrainingVideo | null }>;
     dropsetConfig: { dropPercents: number[]; restSeconds?: number } | null;
     circuitGroup: string | null;
+    excerciceMetadata: SerializedExcerciceMetadata | null;
+}
+
+interface SerializedExcerciceMetadata {
+    planItemId: string;
+    note: string | null;
+    date: string;
+    stes: Array<{
+        repeats: number;
+        weight: number;
+    }>;
 }
 
 interface SerializedSupersetItem {
@@ -103,9 +114,10 @@ async function serializeTrainingPlan(
         }
 
         const dayDateKey = toDateOnlyString(day.date);
-        const isDone = trackingMap.get(dayDateKey)?.trainingDone ?? false;
-
-        const completedIds = new Set<string>(trackingMap.get(dayDateKey)?.trainingCompletedItemIds ?? []);
+        const tracking = trackingMap.get(dayDateKey);
+        const isDone = tracking?.trainingDone ?? false;
+        const completedIds = new Set<string>(tracking?.trainingCompletedItemIds ?? []);
+        const completionRecordMap = toTrainingCompletionRecordMap(tracking);
 
         const items = (day.items ?? []).map((item) => {
             for (const superset of item.supersetItems ?? []) {
@@ -119,13 +131,22 @@ async function serializeTrainingPlan(
                 }
             }
 
+            const itemDone = completedIds.has(item.id);
             return {
                 id: item.id,
                 order: item.order,
                 sets: item.sets ?? null,
                 repeats: item.repeats ?? null,
                 isSuperset: item.isSuperset,
-                isDone: completedIds.has(item.id),
+                isDone: itemDone,
+                excerciceMetadata: itemDone
+                    ? buildExcerciceMetadata(
+                        item.id,
+                        item.repeats ?? null,
+                        completionRecordMap.get(item.id),
+                        dayDateKey,
+                    )
+                    : null,
                 trainingVideo: item.trainingVideo as TrainingVideoEntity | undefined,
                 supersetItems: item.supersetItems ?? [],
             } as RawTrainingPlanItem;
@@ -169,6 +190,7 @@ async function serializeTrainingPlan(
                     isSuperset: item.isSuperset,
                     itemType: (item as any).itemType ?? (item.isSuperset ? 'SUPERSET' : 'REGULAR'),
                     isDone: item.isDone,
+                    excerciceMetadata: item.excerciceMetadata,
                     trainingVideo: serializeVideo(item.trainingVideo),
                     supersetItems: item.supersetItems.map((superset) => ({
                         trainingVideoId: superset.trainingVideoId,
@@ -240,6 +262,50 @@ export async function getMyTrainingPlanController(req: Request, res: Response): 
     });
 }
 
+export async function adminUpdateTrainingPlanDayController(req: Request, res: Response): Promise<void> {
+    const { planId, dayIndex } = req.params;
+    const plan = await TrainingPlanService.updatePlanDayByPlanId(req.user!, planId, Number(dayIndex), req.body);
+    const trainingPlan = await serializeTrainingPlan(plan);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { trainingPlan },
+    });
+}
+
+export async function adminClearTrainingPlanDayController(req: Request, res: Response): Promise<void> {
+    const { planId, dayIndex } = req.params;
+    const plan = await TrainingPlanService.clearPlanDayByPlanId(req.user!, planId, Number(dayIndex));
+    const trainingPlan = await serializeTrainingPlan(plan);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { trainingPlan },
+    });
+}
+
+export async function adminUpdateTrainingPlanItemController(req: Request, res: Response): Promise<void> {
+    const { itemId } = req.params;
+    const plan = await TrainingPlanService.updatePlanItemById(req.user!, itemId, req.body);
+    const trainingPlan = await serializeTrainingPlan(plan);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { trainingPlan },
+    });
+}
+
+export async function adminDeleteTrainingPlanItemController(req: Request, res: Response): Promise<void> {
+    const { itemId } = req.params;
+    const plan = await TrainingPlanService.deletePlanItemById(req.user!, itemId);
+    const trainingPlan = await serializeTrainingPlan(plan);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { trainingPlan },
+    });
+}
+
 function serializeVideo(video: TrainingVideoEntity | undefined): SerializedTrainingVideo | null {
     if (!video) {
         return null;
@@ -273,6 +339,7 @@ interface RawTrainingPlanItem {
     repeats: number | null;
     isSuperset: boolean;
     isDone: boolean;
+    excerciceMetadata: SerializedExcerciceMetadata | null;
     trainingVideo?: TrainingVideoEntity;
     supersetItems: Array<{ trainingVideoId: string; sets: number; repeats: number }>;
 }
@@ -310,8 +377,10 @@ async function processDays(
 
     for (const day of days) {
         const dayDateKey = toDateOnlyString(day.date);
-        const isDone = trackingMap.get(dayDateKey)?.trainingDone ?? false;
-        const completedIds = new Set<string>(trackingMap.get(dayDateKey)?.trainingCompletedItemIds ?? []);
+        const tracking = trackingMap.get(dayDateKey);
+        const isDone = tracking?.trainingDone ?? false;
+        const completedIds = new Set<string>(tracking?.trainingCompletedItemIds ?? []);
+        const completionRecordMap = toTrainingCompletionRecordMap(tracking);
 
         const items = (day.items ?? []).map((item: any) => {
             for (const superset of item.supersetItems ?? []) {
@@ -325,13 +394,22 @@ async function processDays(
                 }
             }
 
+            const itemDone = completedIds.has(item.id);
             return {
                 id: item.id,
                 order: item.order,
                 sets: item.sets ?? null,
                 repeats: item.repeats ?? null,
                 isSuperset: item.isSuperset,
-                isDone: completedIds.has(item.id),
+                isDone: itemDone,
+                excerciceMetadata: itemDone
+                    ? buildExcerciceMetadata(
+                        item.id,
+                        item.repeats ?? null,
+                        completionRecordMap.get(item.id),
+                        dayDateKey,
+                    )
+                    : null,
                 itemType: item.itemType ?? (item.isSuperset ? 'SUPERSET' : 'REGULAR'),
                 trainingVideo: item.trainingVideo,
                 supersetItems: item.supersetItems ?? [],
@@ -364,6 +442,7 @@ async function processDays(
             isSuperset: item.isSuperset,
             itemType: item.itemType,
             isDone: item.isDone,
+            excerciceMetadata: item.excerciceMetadata,
             trainingVideo: serializeVideo(item.trainingVideo),
             supersetItems: item.supersetItems.map((superset: any) => ({
                 trainingVideoId: superset.trainingVideoId,
@@ -392,4 +471,47 @@ function toDateOnlyString(date: Date | string): string {
     }
     const parsed = new Date(date);
     return Number.isNaN(parsed.getTime()) ? String(date) : parsed.toISOString().split('T')[0];
+}
+
+function toTrainingCompletionRecordMap(
+    tracking?: DailyTrackingEntity,
+): Map<string, TrainingCompletionRecord> {
+    const map = new Map<string, TrainingCompletionRecord>();
+    for (const record of tracking?.trainingCompletionRecords ?? []) {
+        if (record?.planItemId) {
+            map.set(record.planItemId, record);
+        }
+    }
+    return map;
+}
+
+function buildExcerciceMetadata(
+    planItemId: string,
+    repeats: number | null,
+    record: TrainingCompletionRecord | undefined,
+    date: string,
+): SerializedExcerciceMetadata {
+    const note = typeof record?.note === 'string' ? record.note.trim() : '';
+    const normalizedStes = Array.isArray(record?.stes)
+        ? record.stes
+            .filter((set) => set && Number.isFinite(set.repeats) && Number.isFinite(set.weight))
+            .map((set) => ({
+                repeats: Number(set.repeats),
+                weight: Number(set.weight),
+            }))
+        : [];
+
+    const fallbackStes = repeats !== null
+        ? [{
+            repeats: Number(repeats),
+            weight: 0,
+        }]
+        : [];
+
+    return {
+        planItemId,
+        note: note || null,
+        date: record?.date ?? date,
+        stes: normalizedStes.length > 0 ? normalizedStes : fallbackStes,
+    };
 }

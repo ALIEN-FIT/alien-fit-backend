@@ -9,6 +9,7 @@ import {
     StaticTrainingPlanTrainingPayload,
     StaticTrainingPlanTrainingType,
 } from './static-training-plan.repository.js';
+import { StaticTrainingPlanTrainingEntity } from './entity/static-training-plan.entity.js';
 
 interface TrainingGroupItemInput {
     trainingVideoId: string;
@@ -50,6 +51,19 @@ interface UpdateStaticTrainingPlanPayload {
     level?: string | null;
     priority?: number;
     trainings?: StaticTrainingPlanTrainingInput[];
+}
+
+interface UpdateStaticTrainingEntryPayload {
+    type?: StaticTrainingPlanTrainingType;
+    trainingVideoId?: string | null;
+    sets?: number | null;
+    repeats?: number | null;
+    duration?: number | null;
+    title?: string | null;
+    description?: string | null;
+    items?: TrainingGroupItemInput[];
+    config?: Record<string, unknown> | null;
+    order?: number;
 }
 
 export class StaticTrainingPlanService {
@@ -136,6 +150,64 @@ export class StaticTrainingPlanService {
         return saved;
     }
 
+    static async updateTrainingById(
+        actor: UserEntity,
+        planId: string,
+        trainingId: string,
+        payload: UpdateStaticTrainingEntryPayload,
+    ) {
+        this.ensureAdmin(actor);
+
+        const plan = await StaticTrainingPlanRepository.findById(planId);
+        if (!plan) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Static training plan not found');
+        }
+
+        const training = await StaticTrainingPlanTrainingEntity.findOne({ where: { id: trainingId, planId } });
+        if (!training) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Static training entry not found');
+        }
+
+        const mergedInput: StaticTrainingPlanTrainingInput = {
+            type: (payload.type ?? training.type) as StaticTrainingPlanTrainingType,
+            trainingVideoId:
+                payload.trainingVideoId !== undefined
+                    ? payload.trainingVideoId ?? undefined
+                    : (training.trainingVideoId ?? undefined),
+            sets: payload.sets ?? training.sets ?? null,
+            repeats: payload.repeats ?? training.repeats ?? null,
+            duration: payload.duration ?? training.duration ?? null,
+            title: payload.title ?? training.title ?? null,
+            description: payload.description ?? training.description ?? null,
+            items: payload.items ?? ((training.items as unknown as TrainingGroupItemInput[] | null) ?? undefined),
+            config: payload.config ?? ((training.config as Record<string, unknown> | null) ?? null),
+        };
+
+        const videoIds = this.collectVideoIds([mergedInput]);
+        const videoMap = await TrainingVideoService.ensureVideosExist(videoIds);
+        const [normalized] = this.buildTrainingsPayload([mergedInput], videoMap);
+
+        await training.update({
+            type: normalized.type,
+            order: payload.order ?? training.order,
+            title: normalized.title,
+            description: normalized.description,
+            sets: normalized.sets,
+            repeats: normalized.repeats,
+            duration: normalized.duration,
+            trainingVideoId: normalized.trainingVideoId,
+            items: normalized.items,
+            config: normalized.config,
+        });
+
+        const saved = await StaticTrainingPlanRepository.findById(planId);
+        if (!saved) {
+            throw new HttpResponseError(StatusCodes.INTERNAL_SERVER_ERROR, 'Failed to load static training plan');
+        }
+
+        return saved;
+    }
+
     static async deleteStaticPlan(actor: UserEntity, planId: string) {
         this.ensureAdmin(actor);
         const deleted = await StaticTrainingPlanRepository.deletePlan(planId);
@@ -143,6 +215,42 @@ export class StaticTrainingPlanService {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Static training plan not found');
         }
         return { deleted: true };
+    }
+
+    static async deleteTrainingById(actor: UserEntity, planId: string, trainingId: string) {
+        this.ensureAdmin(actor);
+
+        const plan = await StaticTrainingPlanRepository.findById(planId);
+        if (!plan) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Static training plan not found');
+        }
+
+        const training = await StaticTrainingPlanTrainingEntity.findOne({ where: { id: trainingId, planId } });
+        if (!training) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Static training entry not found');
+        }
+
+        await training.destroy();
+
+        const remaining = await StaticTrainingPlanTrainingEntity.findAll({
+            where: { planId },
+            order: [['order', 'ASC']],
+        });
+
+        for (let index = 0; index < remaining.length; index += 1) {
+            const row = remaining[index];
+            const nextOrder = index + 1;
+            if (row.order !== nextOrder) {
+                await row.update({ order: nextOrder });
+            }
+        }
+
+        const saved = await StaticTrainingPlanRepository.findById(planId);
+        if (!saved) {
+            throw new HttpResponseError(StatusCodes.INTERNAL_SERVER_ERROR, 'Failed to load static training plan');
+        }
+
+        return saved;
     }
 
     static async getStaticPlan(planId: string) {

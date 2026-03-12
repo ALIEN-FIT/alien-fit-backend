@@ -26,3 +26,28 @@ export const createDietPlanSchema = Joi.object({
 export const dietPlanUserParamSchema = Joi.object({
     userId: JoiCustomValidateObjectId('User ID', true),
 });
+
+export const dietPlanAdminDayParamSchema = Joi.object({
+    planId: JoiCustomValidateObjectId('Diet plan ID', true),
+    dayIndex: Joi.number().integer().min(1).max(30).required(),
+});
+
+export const dietMealItemParamSchema = Joi.object({
+    mealItemId: JoiCustomValidateObjectId('Diet meal item ID', true),
+});
+
+export const updateDietPlanDaySchema = Joi.object({
+    meals: Joi.array().items(mealSchema).optional(),
+    snacks: Joi.array().items(mealSchema).optional(),
+})
+    .min(1)
+    .messages({ 'object.min': 'At least one field must be provided' });
+
+export const updateDietMealSchema = Joi.object({
+    mealName: Joi.string().min(1).optional(),
+    order: Joi.number().integer().min(1).optional(),
+    text: Joi.string().min(1).optional(),
+    itemType: Joi.string().valid('MEAL', 'SNACK').optional(),
+})
+    .min(1)
+    .messages({ 'object.min': 'At least one field must be provided' });

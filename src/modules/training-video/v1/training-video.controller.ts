@@ -47,6 +47,22 @@ export async function deleteTrainingVideoController(req: Request, res: Response)
     });
 }
 
+export async function removeTrainingVideoFromTagController(req: Request, res: Response) {
+    const result = await TrainingVideoService.removeVideoFromTag(req.user!, req.params.videoId, req.params.tagId);
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: result,
+    });
+}
+
+export async function replaceTrainingVideoController(req: Request, res: Response) {
+    const result = await TrainingVideoService.replaceVideo(req.user!, req.params.videoId, req.body);
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: result,
+    });
+}
+
 export async function getTrainingVideoController(req: Request, res: Response) {
     const video = await TrainingVideoService.getVideo(req.user!, req.params.videoId);
     res.status(StatusCodes.OK).json({

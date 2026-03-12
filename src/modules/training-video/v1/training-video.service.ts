@@ -9,6 +9,17 @@ import { generateYouTubeAuthUrl, getYouTubeClient, hasYouTubeAuthConfigured } fr
 import { env } from '../../../config/env.js';
 import { createSignedState } from '../../../utils/signed-state.js';
 import { clearYouTubeStoredTokens } from '../../../config/youtube-token-store.js';
+import { TrainingPlanItemEntity } from '../../plans/training/v1/entity/training-plan.entity.js';
+import {
+    StaticTrainingPlanItemEntity,
+    StaticTrainingPlanTrainingEntity,
+} from '../../plans/static-training-plans/v1/entity/static-training-plan.entity.js';
+
+interface ReplaceTrainingVideoPayload {
+    replacementVideoId: string;
+    deleteOld?: boolean;
+    deactivateOld?: boolean;
+}
 
 interface CreateTrainingVideoPayload {
     title: string;
@@ -68,6 +79,186 @@ export class TrainingVideoService {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training video not found');
         }
         return { deleted: true };
+    }
+
+    static async removeVideoFromTag(actor: UserEntity, videoId: string, tagId: string) {
+        assertAdmin(actor);
+
+        const [video, tag] = await Promise.all([
+            TrainingVideoRepository.findById(videoId),
+            TrainingTagRepository.findById(tagId),
+        ]);
+
+        if (!video) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training video not found');
+        }
+
+        if (!tag) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training tag not found');
+        }
+
+        const removed = await TrainingVideoRepository.removeTagFromVideo(videoId, tagId);
+        if (!removed) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training video is not assigned to this tag');
+        }
+
+        return { removed: true };
+    }
+
+    static async replaceVideo(actor: UserEntity, videoId: string, payload: ReplaceTrainingVideoPayload) {
+        assertAdmin(actor);
+
+        if (payload.replacementVideoId === videoId) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'replacementVideoId must be different from videoId');
+        }
+
+        const oldVideo = await TrainingVideoRepository.findById(videoId);
+        if (!oldVideo) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training video not found');
+        }
+
+        const replacementVideo = await TrainingVideoRepository.findById(payload.replacementVideoId);
+        if (!replacementVideo) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Replacement training video not found');
+        }
+
+        const replacementStats = await this.replaceVideoReferences(videoId, payload.replacementVideoId);
+
+        let oldVideoDeleted = false;
+        let oldVideoDeactivated = false;
+
+        if (payload.deleteOld) {
+            await TrainingVideoRepository.deleteVideo(videoId);
+            oldVideoDeleted = true;
+        } else if (payload.deactivateOld !== false && oldVideo.isActive) {
+            await TrainingVideoRepository.updateVideo(videoId, { isActive: false });
+            oldVideoDeactivated = true;
+        }
+
+        return {
+            oldVideoId: videoId,
+            replacementVideoId: payload.replacementVideoId,
+            oldVideoDeleted,
+            oldVideoDeactivated,
+            ...replacementStats,
+        };
+    }
+
+    private static async replaceVideoReferences(oldVideoId: string, replacementVideoId: string) {
+        let replacedInTrainingItems = 0;
+        let replacedInTrainingSupersets = 0;
+        let replacedInTrainingExtraVideos = 0;
+        let replacedInStaticItems = 0;
+        let replacedInStaticItemSupersets = 0;
+        let replacedInStaticTrainings = 0;
+        let replacedInStaticTrainingItems = 0;
+
+        const [trainingItemsResult] = await TrainingPlanItemEntity.update(
+            { trainingVideoId: replacementVideoId },
+            { where: { trainingVideoId: oldVideoId } },
+        );
+        replacedInTrainingItems = Number(trainingItemsResult ?? 0);
+
+        const trainingItemsWithJson = await TrainingPlanItemEntity.findAll({
+            where: {
+                itemType: 'SUPERSET',
+            },
+        });
+
+        for (const item of trainingItemsWithJson) {
+            let changed = false;
+            const supersetItems = Array.isArray(item.supersetItems) ? [...item.supersetItems] : [];
+            const extraVideos = Array.isArray(item.extraVideos) ? [...item.extraVideos] : [];
+
+            const nextSupersetItems = supersetItems.map((entry: any) => {
+                if (entry?.trainingVideoId === oldVideoId) {
+                    changed = true;
+                    replacedInTrainingSupersets += 1;
+                    return { ...entry, trainingVideoId: replacementVideoId };
+                }
+                return entry;
+            });
+
+            const nextExtraVideos = extraVideos.map((entry: any) => {
+                if (entry?.trainingVideoId === oldVideoId) {
+                    changed = true;
+                    replacedInTrainingExtraVideos += 1;
+                    return { ...entry, trainingVideoId: replacementVideoId };
+                }
+                return entry;
+            });
+
+            if (changed) {
+                await item.update({
+                    supersetItems: nextSupersetItems,
+                    extraVideos: nextExtraVideos,
+                });
+            }
+        }
+
+        const [staticItemResult] = await StaticTrainingPlanItemEntity.update(
+            { trainingVideoId: replacementVideoId },
+            { where: { trainingVideoId: oldVideoId } },
+        );
+        replacedInStaticItems = Number(staticItemResult ?? 0);
+
+        const staticItems = await StaticTrainingPlanItemEntity.findAll();
+        for (const item of staticItems) {
+            if (!Array.isArray(item.supersetItems)) {
+                continue;
+            }
+
+            let changed = false;
+            const nextSupersetItems = item.supersetItems.map((entry: any) => {
+                if (entry?.trainingVideoId === oldVideoId) {
+                    changed = true;
+                    replacedInStaticItemSupersets += 1;
+                    return { ...entry, trainingVideoId: replacementVideoId };
+                }
+                return entry;
+            });
+
+            if (changed) {
+                await item.update({ supersetItems: nextSupersetItems });
+            }
+        }
+
+        const [staticTrainingResult] = await StaticTrainingPlanTrainingEntity.update(
+            { trainingVideoId: replacementVideoId },
+            { where: { trainingVideoId: oldVideoId } },
+        );
+        replacedInStaticTrainings = Number(staticTrainingResult ?? 0);
+
+        const staticTrainings = await StaticTrainingPlanTrainingEntity.findAll();
+        for (const training of staticTrainings) {
+            if (!Array.isArray(training.items)) {
+                continue;
+            }
+
+            let changed = false;
+            const nextItems = training.items.map((entry: any) => {
+                if (entry?.trainingVideoId === oldVideoId) {
+                    changed = true;
+                    replacedInStaticTrainingItems += 1;
+                    return { ...entry, trainingVideoId: replacementVideoId };
+                }
+                return entry;
+            });
+
+            if (changed) {
+                await training.update({ items: nextItems });
+            }
+        }
+
+        return {
+            replacedInTrainingItems,
+            replacedInTrainingSupersets,
+            replacedInTrainingExtraVideos,
+            replacedInStaticItems,
+            replacedInStaticItemSupersets,
+            replacedInStaticTrainings,
+            replacedInStaticTrainingItems,
+        };
     }
 
     static async getVideo(actor: UserEntity, videoId: string) {

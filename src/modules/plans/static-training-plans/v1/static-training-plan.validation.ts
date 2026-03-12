@@ -87,6 +87,27 @@ export const staticTrainingPlanParamSchema = Joi.object({
     planId: JoiCustomValidateObjectId('Static training plan ID'),
 }).unknown(false);
 
+export const staticTrainingEntryParamSchema = Joi.object({
+    planId: JoiCustomValidateObjectId('Static training plan ID'),
+    trainingId: JoiCustomValidateObjectId('Static training entry ID'),
+}).unknown(false);
+
+export const updateStaticTrainingEntrySchema = Joi.object({
+    type: Joi.string().valid('REGULAR', 'SUPERSET', 'DROPSET', 'CIRCUIT').optional(),
+    trainingVideoId: Joi.alternatives().try(JoiCustomValidateObjectId('Training video ID', false), Joi.valid(null)).optional(),
+    title: Joi.string().trim().allow('', null).optional(),
+    description: Joi.string().trim().allow('', null).optional(),
+    sets: Joi.number().integer().positive().allow(null).optional(),
+    repeats: Joi.number().integer().positive().allow(null).optional(),
+    duration: Joi.number().integer().positive().allow(null).optional(),
+    items: Joi.array().items(trainingGroupItemSchema).min(1).optional(),
+    config: Joi.object().allow(null).optional(),
+    order: Joi.number().integer().positive().optional(),
+})
+    .min(1)
+    .messages({ 'object.min': 'At least one field must be provided' })
+    .unknown(false);
+
 export const listStaticTrainingPlansQuerySchema = Joi.object({
     search: Joi.string().trim().optional(),
     page: Joi.number().integer().positive().optional(),

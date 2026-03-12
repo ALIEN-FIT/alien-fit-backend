@@ -148,6 +148,50 @@ export async function getMyDietPlanController(req: Request, res: Response): Prom
     });
 }
 
+export async function adminUpdateDietPlanDayController(req: Request, res: Response): Promise<void> {
+    const { planId, dayIndex } = req.params;
+    const plan = await DietPlanService.updatePlanDayByPlanId(req.user!, planId, Number(dayIndex), req.body);
+    const dietPlan = await serializeDietPlan(plan);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { dietPlan },
+    });
+}
+
+export async function adminClearDietPlanDayController(req: Request, res: Response): Promise<void> {
+    const { planId, dayIndex } = req.params;
+    const plan = await DietPlanService.clearPlanDayByPlanId(req.user!, planId, Number(dayIndex));
+    const dietPlan = await serializeDietPlan(plan);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { dietPlan },
+    });
+}
+
+export async function adminUpdateDietMealController(req: Request, res: Response): Promise<void> {
+    const { mealItemId } = req.params;
+    const plan = await DietPlanService.updateMealById(req.user!, mealItemId, req.body);
+    const dietPlan = await serializeDietPlan(plan);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { dietPlan },
+    });
+}
+
+export async function adminDeleteDietMealController(req: Request, res: Response): Promise<void> {
+    const { mealItemId } = req.params;
+    const plan = await DietPlanService.deleteMealById(req.user!, mealItemId);
+    const dietPlan = await serializeDietPlan(plan);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { dietPlan },
+    });
+}
+
 async function buildTrackingMap(
     userId: string,
     days: Array<{ date: Date | string }>,

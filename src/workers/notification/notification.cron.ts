@@ -7,24 +7,40 @@ import { DailyTrackingEntity } from '../../modules/tracking/v1/entity/daily-trac
 import { TrainingPlanDayEntity, TrainingPlanEntity } from '../../modules/plans/training/v1/entity/training-plan.entity.js';
 import { notificationQueue } from './notification.queue.js';
 import { NotificationTypes } from '../../constants/notification-type.js';
+import { NotificationEntity } from '../../modules/notification/v1/entity/notification.entity.js';
+import { UserProfileEntity } from '../../modules/user-profile/v1/model/user-profile.model.js';
 
-function startOfDay(date: Date) {
+function startOfDayUTC(date: Date) {
     const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
+    d.setUTCHours(0, 0, 0, 0);
     return d;
 }
 
-function endOfDay(date: Date) {
+function endOfDayUTC(date: Date) {
     const d = new Date(date);
-    d.setHours(23, 59, 59, 999);
+    d.setUTCHours(23, 59, 59, 999);
     return d;
 }
+
+function daysAgoUTC(base: Date, days: number) {
+    const d = new Date(base);
+    d.setUTCDate(d.getUTCDate() - days);
+    return d;
+}
+
+function toDateOnlyUTC(date: Date) {
+    return startOfDayUTC(date).toISOString().slice(0, 10);
+}
+
+type NotificationJob = { name: string; data: any };
 
 async function enqueueDailyReminders() {
     const now = new Date();
-    const todayStart = startOfDay(now);
-    const todayEnd = endOfDay(now);
-    const todayDateOnly = todayStart.toISOString().slice(0, 10);
+    const todayStart = startOfDayUTC(now);
+    const todayEnd = endOfDayUTC(now);
+    const todayDateOnly = toDateOnlyUTC(now);
+    const weekAgo = daysAgoUTC(todayStart, 7);
+    const twoWeeksAgo = daysAgoUTC(todayStart, 14);
 
     const subscriptions = await SubscriptionEntity.findAll({
         where: { isSubscribed: true },
@@ -35,6 +51,24 @@ async function enqueueDailyReminders() {
     if (userIds.length === 0) {
         return;
     }
+
+    const alreadySent = await NotificationEntity.findAll({
+        where: {
+            userId: userIds,
+            createdAt: {
+                [Op.between]: [todayStart, todayEnd],
+            },
+            type: [
+                NotificationTypes.TRAINING_REMINDER,
+                NotificationTypes.NUTRITION,
+                NotificationTypes.BODY_IMAGE_REMINDER,
+                NotificationTypes.INBODY_REMINDER,
+            ],
+        },
+        attributes: ['userId', 'type'],
+    });
+
+    const sentByUserAndType = new Set(alreadySent.map((n: any) => `${n.userId}:${n.type}`));
 
     // Find users who have a training day scheduled today
     const trainingDays = await TrainingPlanDayEntity.findAll({
@@ -58,32 +92,89 @@ async function enqueueDailyReminders() {
     const trackingByUser = new Map<string, DailyTrackingEntity>();
     dailyTrack.forEach((t) => trackingByUser.set(t.userId, t));
 
-    const jobs: Array<{ name: string; data: any }> = [];
+    const profiles = await UserProfileEntity.findAll({
+        where: { userId: userIds },
+        attributes: ['userId', 'bodyImages', 'bodyImagesUpdatedAt', 'inbodyImage', 'inbodyImageUpdatedAt', 'createdAt'],
+    });
+
+    const profileByUser = new Map<string, UserProfileEntity>();
+    profiles.forEach((profile) => profileByUser.set(String(profile.userId), profile));
+
+    const jobs: NotificationJob[] = [];
 
     for (const userId of userIds) {
         const tracking = trackingByUser.get(userId);
+        const profile = profileByUser.get(userId);
 
         const needsTrainingReminder = usersWithTrainingToday.has(userId) && !(tracking?.trainingDone ?? false);
         const needsDietReminder = !(tracking?.dietDone ?? false);
 
-        if (!needsTrainingReminder && !needsDietReminder) {
-            continue;
+        if (needsTrainingReminder && !sentByUserAndType.has(`${userId}:${NotificationTypes.TRAINING_REMINDER}`)) {
+            jobs.push({
+                name: 'send',
+                data: {
+                    userId,
+                    byUserId: null,
+                    type: NotificationTypes.TRAINING_REMINDER,
+                    title: 'Workout reminder',
+                    body: 'You haven\'t trained today. Let\'s get your workout done!',
+                },
+            });
         }
 
-        const parts: string[] = [];
-        if (needsTrainingReminder) parts.push('training');
-        if (needsDietReminder) parts.push('meals');
+        if (needsDietReminder && !sentByUserAndType.has(`${userId}:${NotificationTypes.NUTRITION}`)) {
+            jobs.push({
+                name: 'send',
+                data: {
+                    userId,
+                    byUserId: null,
+                    type: NotificationTypes.NUTRITION,
+                    title: 'Meal reminder',
+                    body: 'You haven\'t completed today\'s meals. Keep your nutrition on track.',
+                },
+            });
+        }
 
-        jobs.push({
-            name: 'send',
-            data: {
-                userId,
-                byUserId: null,
-                type: NotificationTypes.TRAINING_REMINDER,
-                title: 'Fuel reminder',
-                body: `Stay on track , complete today\`s  ${parts.join(' and ')}.`,
-            },
-        });
+        const bodyImages = Array.isArray(profile?.bodyImages) ? profile?.bodyImages : [];
+        const hasBodyImages = bodyImages.length > 0;
+        const bodyImagesUpdatedAt = profile?.bodyImagesUpdatedAt ? new Date(profile.bodyImagesUpdatedAt) : null;
+        const bodyImagesAnchorDate = bodyImagesUpdatedAt ?? (profile?.createdAt ? new Date(profile.createdAt) : null);
+        const needsBodyImageReminder =
+            Boolean(bodyImagesAnchorDate) &&
+            (!hasBodyImages || (bodyImagesUpdatedAt ? bodyImagesUpdatedAt <= weekAgo : bodyImagesAnchorDate <= weekAgo));
+
+        if (needsBodyImageReminder && !sentByUserAndType.has(`${userId}:${NotificationTypes.BODY_IMAGE_REMINDER}`)) {
+            jobs.push({
+                name: 'send',
+                data: {
+                    userId,
+                    byUserId: null,
+                    type: NotificationTypes.BODY_IMAGE_REMINDER,
+                    title: 'Progress Update',
+                    body: 'Update your Body Shape Images to monitor your progress.',
+                },
+            });
+        }
+
+        const hasInbodyImage = Boolean(profile?.inbodyImage);
+        const inbodyUpdatedAt = profile?.inbodyImageUpdatedAt ? new Date(profile.inbodyImageUpdatedAt) : null;
+        const inbodyAnchorDate = inbodyUpdatedAt ?? (profile?.createdAt ? new Date(profile.createdAt) : null);
+        const needsInbodyReminder =
+            Boolean(inbodyAnchorDate) &&
+            (!hasInbodyImage || (inbodyUpdatedAt ? inbodyUpdatedAt <= twoWeeksAgo : inbodyAnchorDate <= twoWeeksAgo));
+
+        if (needsInbodyReminder && !sentByUserAndType.has(`${userId}:${NotificationTypes.INBODY_REMINDER}`)) {
+            jobs.push({
+                name: 'send',
+                data: {
+                    userId,
+                    byUserId: null,
+                    type: NotificationTypes.INBODY_REMINDER,
+                    title: 'InBody Update',
+                    body: 'Update your InBody results to monitor your body composition progress',
+                },
+            });
+        }
     }
 
     if (jobs.length === 0) {

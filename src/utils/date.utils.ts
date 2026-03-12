@@ -10,6 +10,17 @@ export function addDays(date: Date, days: number): Date {
     return result;
 }
 
+export function differenceInCalendarDaysUTC(laterDate: Date, earlierDate: Date): number {
+    const millisecondsPerDay = 1000 * 60 * 60 * 24;
+    const normalizedLaterDate = startOfDayUTC(laterDate);
+    const normalizedEarlierDate = startOfDayUTC(earlierDate);
+
+    return Math.max(
+        0,
+        Math.floor((normalizedLaterDate.getTime() - normalizedEarlierDate.getTime()) / millisecondsPerDay)
+    );
+}
+
 export function startOfDayUTC(date: Date): Date {
     const result = new Date(date);
     result.setUTCHours(0, 0, 0, 0);

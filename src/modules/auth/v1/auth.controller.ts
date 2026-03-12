@@ -231,13 +231,17 @@ export async function getMeController(req: Request, res: Response): Promise<void
         data: {
             user: user.toJSON(),
             subscription: {
+                status: subscriptionStatus.status,
                 isSubscribed: subscriptionStatus.isSubscribed,
+                isFrozen: subscriptionStatus.isFrozen,
                 isFreeTier: subscriptionStatus.isFreeTier,
                 planType: subscriptionStatus.planType,
                 capabilities: subscriptionStatus.capabilities,
                 profileUpdateRequired: subscriptionStatus.profileUpdateRequired,
                 warning,
                 warningThresholdDays,
+                freezeStartedAt: subscriptionStatus.freezeStartedAt,
+                freezingEndDate: subscriptionStatus.freezingEndDate,
                 startDate: subscriptionStatus.subscription?.startDate ?? null,
                 endDate: subscriptionStatus.subscription?.endDate ?? null,
             },

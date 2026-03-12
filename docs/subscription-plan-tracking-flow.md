@@ -37,7 +37,13 @@ All routes require authentication unless noted. Admin-only routes are explicitly
 | --- | --- | --- | --- |
 | `POST` | `/api/v1/subscription/activate/:userId` | Activate a four-week subscription for a user | Admin only |
 | `POST` | `/api/v1/subscription/renew/:userId` | Extend subscription four more weeks | Admin only |
-| `GET` | `/api/v1/subscription/status` | Fetch current user subscription status | Returns `isSubscribed` and profile cadence flags |
+| `POST` | `/api/v1/subscription/freeze` | Create freeze request for authenticated user | User only, active paid subscription required |
+| `GET` | `/api/v1/subscription/freeze/requests/pending` | List pending freeze requests | Admin only |
+| `POST` | `/api/v1/subscription/freeze/requests/:requestId/approve` | Approve pending freeze request and freeze subscription | Admin only, can override freeze days or send `null` |
+| `POST` | `/api/v1/subscription/freeze/requests/:requestId/decline` | Decline pending freeze request | Admin only |
+| `POST` | `/api/v1/subscription/defrost` | Resume a previously frozen subscription | User only |
+| `POST` | `/api/v1/subscription/defrost/:userId` | Resume a user's frozen subscription | Admin only |
+| `GET` | `/api/v1/subscription/status` | Fetch current user subscription status | Returns lifecycle status, freeze metadata, and profile cadence flags |
 
 Sample: Activate subscription
 
@@ -64,6 +70,78 @@ Successful response:
   }
 }
 ```
+
+Sample: User creates freeze request
+
+```http
+POST /api/v1/subscription/freeze
+Authorization: Bearer <user-token>
+Content-Type: application/json
+
+{
+  "requestedDays": 7,
+  "note": "Travelling for one week"
+}
+```
+
+Sample: Admin approves request (use requested days)
+
+```http
+POST /api/v1/subscription/freeze/requests/6b6f3c64-8f76-4c72-b803-1dca2d6d6f16/approve
+Authorization: Bearer <admin-token>
+Content-Type: application/json
+
+{
+  "freezeDays": null,
+  "note": "Approved as requested"
+}
+```
+
+Sample: Admin approves request with override days
+
+```http
+POST /api/v1/subscription/freeze/requests/6b6f3c64-8f76-4c72-b803-1dca2d6d6f16/approve
+Authorization: Bearer <admin-token>
+Content-Type: application/json
+
+{
+  "freezeDays": 5,
+  "note": "Approved for 5 days"
+}
+```
+
+Sample: Admin declines request
+
+```http
+POST /api/v1/subscription/freeze/requests/6b6f3c64-8f76-4c72-b803-1dca2d6d6f16/decline
+Authorization: Bearer <admin-token>
+Content-Type: application/json
+
+{
+  "note": "Policy does not allow freeze in this period"
+}
+```
+
+Sample: Resume frozen subscription
+
+```http
+POST /api/v1/subscription/defrost
+Authorization: Bearer <user-token>
+```
+
+Status response now includes:
+
+- `status`: `inactive`, `active`, or `frozen`
+- `isFrozen`: boolean shortcut for frozen state
+- `freezeStartedAt`: when the freeze began
+- `freezingEndDate`: the planned freeze end date (auto-defrost runs when this date is reached)
+
+Freeze request rules:
+
+- User can have only one pending freeze request at a time.
+- Admin can approve or decline pending requests.
+- When approving, admin may pass `freezeDays` or `null`; `null` means use user requested days.
+- Both admin and user can defrost at any time.
 
 ### Plan Update Requests
 

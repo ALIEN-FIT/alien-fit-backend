@@ -53,6 +53,40 @@ export const trainingPlanUserParamSchema = Joi.object({
     userId: JoiCustomValidateObjectId('User ID', true),
 });
 
+export const trainingPlanAdminDayParamSchema = Joi.object({
+    planId: JoiCustomValidateObjectId('Training plan ID', true),
+    dayIndex: Joi.number().integer().min(1).max(28).required(),
+});
+
+export const trainingPlanItemParamSchema = Joi.object({
+    itemId: JoiCustomValidateObjectId('Training plan item ID', true),
+});
+
+export const updateTrainingPlanDaySchema = Joi.object({
+    name: Joi.string().trim().min(1).optional(),
+    items: Joi.array().items(trainingPlanItemSchema).optional(),
+})
+    .min(1)
+    .messages({ 'object.min': 'At least one field must be provided' });
+
+export const updateTrainingPlanItemSchema = Joi.object({
+    trainingVideoId: JoiCustomValidateObjectId('Training video ID', false),
+    sets: Joi.number().integer().positive().optional(),
+    repeats: Joi.number().integer().positive().optional(),
+    itemType: Joi.string().valid('REGULAR', 'SUPERSET', 'DROPSET', 'CIRCUIT').optional(),
+    isSuperset: Joi.boolean().optional(),
+    supersetItems: Joi.array().items(supersetExerciseSchema).optional(),
+    extraVideos: Joi.array().items(Joi.object({ trainingVideoId: JoiCustomValidateObjectId('Extra video ID') })).optional(),
+    dropsetConfig: Joi.object({
+        dropPercents: Joi.array().items(Joi.number().min(0).max(100)).min(1).required(),
+        restSeconds: Joi.number().integer().min(0).optional(),
+    }).optional(),
+    circuitGroup: Joi.string().allow('').optional(),
+    note: Joi.string().optional(),
+})
+    .min(1)
+    .messages({ 'object.min': 'At least one field must be provided' });
+
 export const getMyTrainingPlanQuerySchema = Joi.object({
     week: Joi.number().integer().min(1).max(4).optional(),
     page: Joi.number().integer().min(1).default(1),

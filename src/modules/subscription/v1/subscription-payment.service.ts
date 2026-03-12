@@ -179,7 +179,7 @@ export class SubscriptionPaymentService {
 
             const pkg = await SubscriptionPackageService.requireActiveById(existing.packageId);
             const status = await SubscriptionService.getStatus(existing.userId);
-            if (status.isSubscribed) {
+            if (status.status === 'active' || status.status === 'frozen') {
                 await SubscriptionService.renewSubscription(existing.userId, pkg.cycles, existing.planType);
             } else {
                 await SubscriptionService.activateSubscription(existing.userId, pkg.cycles, existing.planType);

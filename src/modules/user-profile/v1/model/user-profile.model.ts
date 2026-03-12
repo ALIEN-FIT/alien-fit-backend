@@ -45,6 +45,12 @@ export class UserProfileEntity extends Model {
     declare preferredFood: PreferredFood;
     declare training: TrainingPreferences;
     declare bodyImages: string[] | null;
+    declare bodyImagesUpdatedAt: Date | null;
+    declare inbodyImage: string | null;
+    declare inbodyImageUpdatedAt: Date | null;
+
+    declare readonly createdAt: Date;
+    declare readonly updatedAt: Date;
 }
 
 UserProfileEntity.init(
@@ -70,6 +76,9 @@ UserProfileEntity.init(
         preferredFood: { type: DataTypes.JSONB }, // e.g. { meats: ["Chicken"], carbs: ["Rice"], ... }
         training: { type: DataTypes.JSONB }, // e.g. { teamSport: ["Football"], ... }
         bodyImages: { type: DataTypes.JSONB, allowNull: true }, // e.g. ["<mediaId>", "<mediaId>"]
+        bodyImagesUpdatedAt: { type: DataTypes.DATE, allowNull: true },
+        inbodyImage: { type: DataTypes.UUID, allowNull: true },
+        inbodyImageUpdatedAt: { type: DataTypes.DATE, allowNull: true },
     },
     {
         sequelize,

@@ -17,6 +17,26 @@ export const subscriptionRenewSchema = Joi.object({
     packageId: JoiCustomValidateObjectId('Package ID', true).optional(),
 }).oxor('cycles', 'packageId');
 
+export const subscriptionFreezeRequestSchema = Joi.object({
+    requestedDays: Joi.number().integer().min(1).max(365).required(),
+    note: Joi.string().trim().max(1000).allow('', null).optional(),
+});
+
+export const subscriptionApproveFreezeRequestSchema = Joi.object({
+    requestId: JoiCustomValidateObjectId('Freeze request ID', true),
+    freezeDays: Joi.number().integer().min(1).max(365).allow(null).optional(),
+    note: Joi.string().trim().max(1000).allow('', null).optional(),
+});
+
+export const subscriptionDeclineFreezeRequestSchema = Joi.object({
+    requestId: JoiCustomValidateObjectId('Freeze request ID', true),
+    note: Joi.string().trim().max(1000).allow('', null).optional(),
+});
+
+export const subscriptionAdminDefrostSchema = Joi.object({
+    userId: JoiCustomValidateObjectId('User ID', true),
+});
+
 export const subscriptionCheckoutSchema = Joi.object({
     packageId: JoiCustomValidateObjectId('Package ID', true),
     planType: Joi.string().valid('diet', 'training', 'both').required(),
