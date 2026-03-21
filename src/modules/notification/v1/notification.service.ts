@@ -1,8 +1,12 @@
 import { StatusCodes } from 'http-status-codes';
+import { Op } from 'sequelize';
 import { HttpResponseError } from '../../../utils/appError.js';
 import { NotificationRepository } from './notification.repository.js';
 import { NotificationType } from '../../../constants/notification-type.js';
 import { enqueueBroadcastNotification, enqueueUserNotification } from '../../../utils/notification.utils.js';
+import { UserEntity } from '../../user/v1/entity/user.entity.js';
+import { Roles } from '../../../constants/roles.js';
+import { errorLogger } from '../../../config/logger.config.js';
 
 interface ListInput {
     page?: number;
@@ -12,6 +16,49 @@ interface ListInput {
 }
 
 export class NotificationService {
+    static async notifyAdminsAndTrainers(payload: {
+        type: NotificationType;
+        title: string;
+        body: string;
+        byUserId?: string | null;
+        excludeUserId?: string;
+    }) {
+        try {
+            const where: Record<string, unknown> = {
+                role: {
+                    [Op.in]: [Roles.ADMIN, Roles.TRAINER],
+                },
+            };
+
+            if (payload.excludeUserId) {
+                where.id = { [Op.ne]: payload.excludeUserId };
+            }
+
+            const recipients = await UserEntity.findAll({
+                where,
+                attributes: ['id'],
+            });
+
+            if (recipients.length === 0) {
+                return;
+            }
+
+            await Promise.all(
+                recipients.map((recipient) =>
+                    enqueueUserNotification({
+                        userId: String(recipient.id),
+                        byUserId: payload.byUserId ?? null,
+                        type: payload.type,
+                        title: payload.title,
+                        body: payload.body,
+                    })
+                )
+            );
+        } catch (err) {
+            errorLogger.error('Failed to notify admins/trainers', err);
+        }
+    }
+
     static async getMyUnseenCount(userId: string) {
         const count = await NotificationRepository.countUnseenByUser(userId);
         return { count };

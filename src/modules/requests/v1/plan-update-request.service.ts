@@ -3,6 +3,9 @@ import { HttpResponseError } from '../../../utils/appError.js';
 import { UserService } from '../../user/v1/user.service.js';
 import { PlanUpdateRequestRepository } from './plan-update-request.repository.js';
 import { PlanUpdateRequestEntity } from './entity/plan-update-request.entity.js';
+import { NotificationService } from '../../notification/v1/notification.service.js';
+import { NotificationTypes } from '../../../constants/notification-type.js';
+import { Roles } from '../../../constants/roles.js';
 
 export class PlanUpdateRequestService {
     static async createOrUpdatePendingRequest(
@@ -10,26 +13,38 @@ export class PlanUpdateRequestService {
         type: string,
         payload: Record<string, unknown> | null,
         notes?: string,
-    ): Promise<PlanUpdateRequestEntity> {
-        await UserService.getUserById(userId);
+    ): Promise<{ request: PlanUpdateRequestEntity; created: boolean }> {
+        const user = await UserService.getUserById(userId);
         const pending = await PlanUpdateRequestRepository.findPendingByUser(userId);
         if (pending) {
             await pending.update({ payload, notes });
-            return pending;
+            return { request: pending, created: false };
         }
-        return PlanUpdateRequestRepository.create({
+        const request = await PlanUpdateRequestRepository.create({
             userId,
             type,
             payload,
             notes: notes ?? null,
         });
+
+        // Notify admins/trainers only when a new pending request is created by a user.
+        if (user.role === Roles.USER) {
+            await NotificationService.notifyAdminsAndTrainers({
+                type: NotificationTypes.GENERAL,
+                title: 'Plan update request',
+                body: `${user.name} (${user.provider}) requested a plan update.`,
+                byUserId: user.id.toString(),
+            });
+        }
+
+        return { request, created: true };
     }
 
     static async createManualRequest(
         userId: string,
         payload: Record<string, unknown> | null,
         notes?: string,
-    ): Promise<PlanUpdateRequestEntity> {
+    ): Promise<{ request: PlanUpdateRequestEntity; created: boolean }> {
         return this.createOrUpdatePendingRequest(userId, 'manual', payload, notes);
     }
 
@@ -65,7 +80,7 @@ export class PlanUpdateRequestService {
     static async ensurePendingProfileUpdateRequest(
         userId: string,
         profilePayload: Record<string, unknown> | null,
-    ): Promise<PlanUpdateRequestEntity> {
+    ): Promise<{ request: PlanUpdateRequestEntity; created: boolean }> {
         return this.createOrUpdatePendingRequest(userId, 'profile-update', profilePayload);
     }
 }

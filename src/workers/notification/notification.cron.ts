@@ -3,6 +3,7 @@ import { Op } from 'sequelize';
 import { infoLogger, errorLogger } from '../../config/logger.config.js';
 import { SubscriptionEntity } from '../../modules/subscription/v1/entity/subscription.entity.js';
 import { UserEntity } from '../../modules/user/v1/entity/user.entity.js';
+import { Roles } from '../../constants/roles.js';
 import { DailyTrackingEntity } from '../../modules/tracking/v1/entity/daily-tracking.entity.js';
 import { TrainingPlanDayEntity, TrainingPlanEntity } from '../../modules/plans/training/v1/entity/training-plan.entity.js';
 import { notificationQueue } from './notification.queue.js';
@@ -44,7 +45,7 @@ async function enqueueDailyReminders() {
 
     const subscriptions = await SubscriptionEntity.findAll({
         where: { isSubscribed: true },
-        include: [{ model: UserEntity, as: 'user', required: true, attributes: ['id'] }],
+        include: [{ model: UserEntity, as: 'user', required: true, where: { role: Roles.USER }, attributes: ['id'] }],
     });
 
     const userIds = subscriptions.map((s: any) => s.user?.id).filter(Boolean) as string[];

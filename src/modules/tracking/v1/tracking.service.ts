@@ -1,6 +1,7 @@
 import { StatusCodes } from 'http-status-codes';
 import { HttpResponseError } from '../../../utils/appError.js';
 import { UserEntity } from '../../user/v1/entity/user.entity.js';
+import { Roles } from '../../../constants/roles.js';
 import { TrackingRepository } from './tracking.repository.js';
 import {
     DailyTrackingEntity,
@@ -11,6 +12,8 @@ import {
 } from './entity/daily-tracking.entity.js';
 import { TrainingPlanItemEntity, TrainingPlanDayEntity, TrainingPlanEntity } from '../../plans/training/v1/entity/training-plan.entity.js';
 import { DietMealItemEntity, DietPlanDayEntity, DietPlanEntity } from '../../plans/diet/v1/entity/diet-plan.entity.js';
+import { NotificationService } from '../../notification/v1/notification.service.js';
+import { NotificationTypes } from '../../../constants/notification-type.js';
 
 interface MarkTrainingDonePayload {
     planItemId: string;
@@ -140,6 +143,7 @@ export class TrackingService {
         }
 
         const tracking = await TrackingRepository.findOrCreate(user.id, expectedDate);
+        const wasTrainingDone = Boolean(tracking.trainingDone);
         const completed = new Set<string>(tracking.trainingCompletedItemIds ?? []);
         completed.add(item.id);
 
@@ -171,6 +175,16 @@ export class TrackingService {
             trainingCompletionRecords: completionRecords,
         });
 
+        if (user.role === Roles.USER && !wasTrainingDone && trainingDone) {
+            const dateOnly = expectedDate.toISOString().split('T')[0];
+            await NotificationService.notifyAdminsAndTrainers({
+                type: NotificationTypes.GENERAL,
+                title: 'Workout completed',
+                body: `${user.name} completed the workout for ${dateOnly}.`,
+                byUserId: user.id.toString(),
+            });
+        }
+
         return tracking;
     }
 
@@ -184,6 +198,7 @@ export class TrackingService {
         }
 
         const tracking = await TrackingRepository.findOrCreate(user.id, expectedDate);
+        const wasDietDone = Boolean(tracking.dietDone);
         const completed = new Set<string>(tracking.dietCompletedItemIds ?? []);
         completed.add(meal.id);
 
@@ -194,6 +209,16 @@ export class TrackingService {
             dietCompletedItemIds: Array.from(completed),
             dietDone,
         });
+
+        if (user.role === Roles.USER && !wasDietDone && dietDone) {
+            const dateOnly = expectedDate.toISOString().split('T')[0];
+            await NotificationService.notifyAdminsAndTrainers({
+                type: NotificationTypes.GENERAL,
+                title: 'Meals completed',
+                body: `${user.name} completed the meals for ${dateOnly}.`,
+                byUserId: user.id.toString(),
+            });
+        }
 
         return tracking;
     }

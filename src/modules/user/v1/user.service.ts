@@ -7,6 +7,9 @@ import { MediaEntity } from '../../media/v1/model/media.model.js';
 import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
 import { SubscriptionEntity } from '../../subscription/v1/entity/subscription.entity.js';
 import { UserSessionEntity } from '../../user-session/v1/entity/user-session.entity.js';
+import { Roles } from '../../../constants/roles.js';
+import { NotificationService } from '../../notification/v1/notification.service.js';
+import { NotificationTypes } from '../../../constants/notification-type.js';
 
 
 interface PaginateOptions {
@@ -50,7 +53,18 @@ export class UserService {
 
         const user = new UserEntity(userData);
         await user.save();
-        return this.getUserById(user.id.toString());
+        const created = await this.getUserById(user.id.toString());
+
+        if (created.role === Roles.USER) {
+            await NotificationService.notifyAdminsAndTrainers({
+                type: NotificationTypes.GENERAL,
+                title: 'New user registered',
+                body: `${created.name} (${created.provider}) registered.`,
+                byUserId: created.id.toString(),
+            });
+        }
+
+        return created;
     }
 
     static async getUserById(userId: string | number, scope = 'default'): Promise<UserEntity> {
