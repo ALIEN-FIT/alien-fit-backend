@@ -190,11 +190,114 @@ async function enqueueDailyReminders() {
     infoLogger.info(`Queued ${jobs.length} daily reminder notifications`);
 }
 
+async function enqueueSubscriptionEndingTodayAlerts() {
+    const now = new Date();
+    const todayStart = startOfDayUTC(now);
+    const todayEnd = endOfDayUTC(now);
+
+    const expiringSubscriptions = await SubscriptionEntity.findAll({
+        where: {
+            isSubscribed: true,
+            endDate: {
+                [Op.between]: [todayStart, todayEnd],
+            },
+        },
+        include: [{
+            model: UserEntity,
+            as: 'user',
+            required: true,
+            where: { role: Roles.USER },
+            attributes: ['id', 'name'],
+        }],
+        order: [['endDate', 'ASC']],
+    });
+
+    if (expiringSubscriptions.length === 0) {
+        return;
+    }
+
+    const recipients = await UserEntity.findAll({
+        where: {
+            role: {
+                [Op.in]: [Roles.ADMIN, Roles.TRAINER],
+            },
+        },
+        attributes: ['id'],
+    });
+
+    if (recipients.length === 0) {
+        return;
+    }
+
+    const recipientIds = recipients.map((recipient) => String(recipient.id));
+    const existingAlerts = await NotificationEntity.findAll({
+        where: {
+            userId: recipientIds,
+            type: NotificationTypes.SUBSCRIPTION_ENDS_TODAY,
+            createdAt: {
+                [Op.between]: [todayStart, todayEnd],
+            },
+        },
+        attributes: ['userId'],
+    });
+
+    const alreadySentRecipientIds = new Set(existingAlerts.map((notification) => String(notification.userId)));
+    const expiringUserNames = Array.from(new Set(expiringSubscriptions
+        .map((subscription: any) => String(subscription.user?.name ?? '').trim())
+        .filter(Boolean)));
+
+    if (expiringUserNames.length === 0) {
+        return;
+    }
+
+    const body = buildSubscriptionEndingTodayBody(expiringUserNames);
+    const jobs: NotificationJob[] = [];
+
+    for (const recipientId of recipientIds) {
+        if (alreadySentRecipientIds.has(recipientId)) {
+            continue;
+        }
+
+        jobs.push({
+            name: 'send',
+            data: {
+                userId: recipientId,
+                byUserId: null,
+                type: NotificationTypes.SUBSCRIPTION_ENDS_TODAY,
+                title: 'Subscriptions ending today',
+                body,
+            },
+        });
+    }
+
+    if (jobs.length === 0) {
+        return;
+    }
+
+    const chunkSize = 1000;
+    for (let i = 0; i < jobs.length; i += chunkSize) {
+        await notificationQueue.addBulk(jobs.slice(i, i + chunkSize));
+    }
+
+    infoLogger.info(`Queued ${jobs.length} subscription ending today notifications`);
+}
+
+function buildSubscriptionEndingTodayBody(userNames: string[]) {
+    if (userNames.length <= 5) {
+        return `Subscriptions ending today: ${userNames.join(', ')}.`;
+    }
+
+    const previewNames = userNames.slice(0, 5).join(', ');
+    const remaining = userNames.length - 5;
+    return `Subscriptions ending today: ${previewNames}, and ${remaining} more.`;
+}
+
 export function startNotificationCron() {
     // Twice daily at 09:00 and 21:00 server time
     cron.schedule('0 9,21 * * *', async () => {
         try {
             await enqueueDailyReminders();
+            await enqueueSubscriptionEndingTodayAlerts();
         } catch (err) {
             errorLogger.error('Notification cron failed', err);
         }

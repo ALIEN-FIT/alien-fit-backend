@@ -2,7 +2,7 @@ import { StatusCodes } from 'http-status-codes';
 import { Op } from 'sequelize';
 import { HttpResponseError } from '../../../utils/appError.js';
 import { NotificationRepository } from './notification.repository.js';
-import { NotificationType } from '../../../constants/notification-type.js';
+import { NotificationType, NotificationTypes } from '../../../constants/notification-type.js';
 import { enqueueBroadcastNotification, enqueueUserNotification } from '../../../utils/notification.utils.js';
 import { UserEntity } from '../../user/v1/entity/user.entity.js';
 import { Roles } from '../../../constants/roles.js';
@@ -16,6 +16,21 @@ interface ListInput {
 }
 
 export class NotificationService {
+    static async notifyUserAboutAdminMessage(payload: {
+        userId: string;
+        adminId?: string | null;
+        adminName: string;
+        preview: string;
+    }) {
+        await enqueueUserNotification({
+            userId: payload.userId,
+            byUserId: payload.adminId ?? null,
+            type: NotificationTypes.ADMIN_MESSAGE,
+            title: `New message from ${payload.adminName}`,
+            body: payload.preview,
+        });
+    }
+
     static async notifyAdminsAndTrainers(payload: {
         type: NotificationType;
         title: string;

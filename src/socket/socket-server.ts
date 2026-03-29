@@ -181,6 +181,18 @@ export function initializeSocketServer(server: HTTPServer) {
                         body: preview,
                         byUserId: userId,
                     });
+                } else if (role === Roles.TRAINER || role === Roles.ADMIN) {
+                    const trimmed = typeof content === 'string' ? content.trim() : '';
+                    const preview = trimmed
+                        ? trimmed.slice(0, 280)
+                        : (Array.isArray(mediaIds) && mediaIds.length > 0 ? '[Attachment]' : 'New message');
+
+                    await NotificationService.notifyUserAboutAdminMessage({
+                        userId: resolvedUserId,
+                        adminId: userId,
+                        adminName: socket.data.name,
+                        preview,
+                    });
                 }
 
                 io.to(getUserRoom(resolvedUserId)).emit(MESSAGE_EVENT, mapMessageForUser(resolvedUserId, message));

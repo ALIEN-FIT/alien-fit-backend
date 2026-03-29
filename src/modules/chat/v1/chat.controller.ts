@@ -7,7 +7,6 @@ import { MessageEntity, SenderRole } from './entity/message.entity.js';
 import { HttpResponseError } from '../../../utils/appError.js';
 import { UserService } from '../../user/v1/user.service.js';
 import { UserEntity } from '../../user/v1/entity/user.entity.js';
-import { is } from 'zod/locales';
 import { NotificationService } from '../../notification/v1/notification.service.js';
 import { NotificationTypes } from '../../../constants/notification-type.js';
 
@@ -166,6 +165,18 @@ export async function sendMessageAsTrainerController(req: Request, res: Response
         senderRole,
         content: content ?? '',
         mediaIds,
+    });
+
+    const trimmed = typeof content === 'string' ? content.trim() : '';
+    const preview = trimmed
+        ? trimmed.slice(0, 280)
+        : (Array.isArray(mediaIds) && mediaIds.length > 0 ? '[Attachment]' : 'New message');
+
+    await NotificationService.notifyUserAboutAdminMessage({
+        userId,
+        adminId: sender.id.toString(),
+        adminName: sender.name,
+        preview,
     });
 
     res.status(StatusCodes.CREATED).json({
