@@ -112,7 +112,7 @@ export class UserProfileService {
 
     await SubscriptionService.recordProfileUpdate(userId);
 
-    const request = await PlanUpdateRequestService.ensurePendingProfileUpdateRequest(
+    const { request } = await PlanUpdateRequestService.ensurePendingProfileUpdateRequest(
       userId,
       payload ? { profileData: payload } : null
     );

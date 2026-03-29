@@ -8,6 +8,9 @@ import { resolvePackageAmount, SubscriptionPackageService } from '../../subscrip
 import { SubscriptionPaymentEntity } from './entity/subscription-payment.entity.js';
 import { SubscriptionPaymentRepository } from './subscription-payment.repository.js';
 import { SubscriptionPlanType } from '../../subscription-packages/v1/subscription-plan-type.js';
+import { NotificationService } from '../../notification/v1/notification.service.js';
+import { NotificationTypes } from '../../../constants/notification-type.js';
+import { Roles } from '../../../constants/roles.js';
 
 export interface SubscriptionCheckoutInput {
     userId: string;
@@ -178,11 +181,22 @@ export class SubscriptionPaymentService {
             });
 
             const pkg = await SubscriptionPackageService.requireActiveById(existing.packageId);
+            const payer = await UserService.getUserById(existing.userId);
             const status = await SubscriptionService.getStatus(existing.userId);
+            const isRenewal = status.status === 'active' || status.status === 'frozen';
             if (status.status === 'active' || status.status === 'frozen') {
                 await SubscriptionService.renewSubscription(existing.userId, pkg.cycles, existing.planType);
             } else {
                 await SubscriptionService.activateSubscription(existing.userId, pkg.cycles, existing.planType);
+            }
+
+            if (payer.role === Roles.USER) {
+                await NotificationService.notifyAdminsAndTrainers({
+                    type: NotificationTypes.GENERAL,
+                    title: isRenewal ? 'Subscription renewed' : 'New subscription',
+                    body: `${payer.name} (${payer.provider}) ${isRenewal ? 'renewed' : 'subscribed'}: ${pkg.name} (${existing.planType}), ${existing.amount} ${existing.currency}.`,
+                    byUserId: payer.id.toString(),
+                });
             }
 
             return { payment: existing, subscriptionActivated: true };

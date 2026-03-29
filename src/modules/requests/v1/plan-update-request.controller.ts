@@ -4,7 +4,7 @@ import { PlanUpdateRequestService } from './plan-update-request.service.js';
 
 export async function createPlanUpdateRequestController(req: Request, res: Response): Promise<void> {
     const userId = req.user!.id.toString();
-    const request = await PlanUpdateRequestService.createManualRequest(
+    const { request } = await PlanUpdateRequestService.createManualRequest(
         userId,
         req.body.payload ?? null,
         req.body.notes ?? undefined,

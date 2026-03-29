@@ -4,9 +4,11 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { authenticateAccessToken } from '../utils/auth.utils.js';
 import { env } from '../config/env.js';
 import { Roles } from '../constants/roles.js';
+import { NotificationTypes } from '../constants/notification-type.js';
 import { ChatService } from '../modules/chat/v1/chat.service.js';
 import { PresenceService } from '../modules/chat/v1/presence.service.js';
 import { MessageEntity, SenderRole } from '../modules/chat/v1/entity/message.entity.js';
+import { NotificationService } from '../modules/notification/v1/notification.service.js';
 import { HttpResponseError } from '../utils/appError.js';
 import { UserService } from '../modules/user/v1/user.service.js';
 import { StatusCodes } from 'http-status-codes';
@@ -57,6 +59,8 @@ declare module 'socket.io' {
     interface SocketData {
         userId: string;
         role: string;
+        name: string;
+        provider: string;
     }
 }
 
@@ -79,6 +83,8 @@ export function initializeSocketServer(server: HTTPServer) {
             const { user } = await authenticateAccessToken(token);
             socket.data.userId = user.id.toString();
             socket.data.role = user.role;
+            socket.data.name = user.name;
+            socket.data.provider = user.provider;
             console.log(`Socket connected: userId=${socket.data.userId}, role=${socket.data.role}`);
             next();
         } catch (error) {
@@ -162,6 +168,32 @@ export function initializeSocketServer(server: HTTPServer) {
                 });
 
                 await PresenceService.heartbeat(userId);
+
+                if (role === Roles.USER) {
+                    const trimmed = typeof content === 'string' ? content.trim() : '';
+                    const preview = trimmed
+                        ? trimmed.slice(0, 280)
+                        : (Array.isArray(mediaIds) && mediaIds.length > 0 ? '[Attachment]' : 'New message');
+
+                    await NotificationService.notifyAdminsAndTrainers({
+                        type: NotificationTypes.MESSAGE,
+                        title: `New message from ${socket.data.name}`,
+                        body: preview,
+                        byUserId: userId,
+                    });
+                } else if (role === Roles.TRAINER || role === Roles.ADMIN) {
+                    const trimmed = typeof content === 'string' ? content.trim() : '';
+                    const preview = trimmed
+                        ? trimmed.slice(0, 280)
+                        : (Array.isArray(mediaIds) && mediaIds.length > 0 ? '[Attachment]' : 'New message');
+
+                    await NotificationService.notifyUserAboutAdminMessage({
+                        userId: resolvedUserId,
+                        adminId: userId,
+                        adminName: socket.data.name,
+                        preview,
+                    });
+                }
 
                 io.to(getUserRoom(resolvedUserId)).emit(MESSAGE_EVENT, mapMessageForUser(resolvedUserId, message));
                 io.to(TRAINERS_ROOM).emit(MESSAGE_EVENT, mapMessageForTrainer(message));

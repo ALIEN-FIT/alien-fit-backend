@@ -7,6 +7,7 @@ import { sendFcmToUser } from '../../utils/fcm.utils.js';
 import { BroadcastNotificationJobData, SendNotificationJobData } from '../../utils/notification.utils.js';
 import { SubscriptionEntity } from '../../modules/subscription/v1/entity/subscription.entity.js';
 import { UserEntity } from '../../modules/user/v1/entity/user.entity.js';
+import { Roles } from '../../constants/roles.js';
 
 const CONCURRENCY = 10;
 
@@ -34,7 +35,7 @@ async function handleSend(job: Job<SendNotificationJobData>) {
 async function handleBroadcast(job: Job<BroadcastNotificationJobData>) {
     const { filters, ...base } = job.data;
 
-    const whereUser: Record<string, any> = {};
+    const whereUser: Record<string, any> = { role: Roles.USER };
     if (filters.gender) {
         whereUser.gender = filters.gender;
     }
