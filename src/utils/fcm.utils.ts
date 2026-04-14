@@ -1,6 +1,7 @@
 import { admin } from '../firebase/firebase.js';
 import { errorLogger, infoLogger } from '../config/logger.config.js';
 import { UserSessionEntity } from '../modules/user-session/v1/entity/user-session.entity.js';
+import { Op } from 'sequelize';
 
 const FCM_MULTICAST_LIMIT = 500;
 
@@ -16,9 +17,11 @@ export async function getUserFcmTokens(userId: string): Promise<string[]> {
         attributes: ['id', 'fcmToken'],
     });
 
-    return sessions
+    const tokens = sessions
         .map((s) => s.fcmToken)
         .filter((token): token is string => typeof token === 'string' && token.trim().length > 0);
+
+    return Array.from(new Set(tokens));
 }
 
 function chunk<T>(items: T[], size: number) {
@@ -30,11 +33,13 @@ function chunk<T>(items: T[], size: number) {
 }
 
 export async function sendFcmToTokens(tokens: string[], payload: FcmPayload) {
-    if (tokens.length === 0) {
+    const uniqueTokens = Array.from(new Set(tokens.map((token) => token.trim()).filter((token) => token.length > 0)));
+
+    if (uniqueTokens.length === 0) {
         return;
     }
 
-    const tokenChunks = chunk(tokens, FCM_MULTICAST_LIMIT);
+    const tokenChunks = chunk(uniqueTokens, FCM_MULTICAST_LIMIT);
 
     for (const group of tokenChunks) {
         try {
@@ -51,7 +56,8 @@ export async function sendFcmToTokens(tokens: string[], payload: FcmPayload) {
                 const invalidTokens: string[] = [];
                 response.responses.forEach((r, idx) => {
                     if (!r.success) {
-                        const code = (r.error as any)?.code as string | undefined;
+                        const maybeError = r.error as { code?: string } | undefined;
+                        const code = maybeError?.code;
                         if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token') {
                             invalidTokens.push(group[idx]);
                         } else {
@@ -63,7 +69,7 @@ export async function sendFcmToTokens(tokens: string[], payload: FcmPayload) {
                 if (invalidTokens.length) {
                     await UserSessionEntity.update(
                         { fcmToken: null },
-                        { where: { fcmToken: invalidTokens } }
+                        { where: { fcmToken: { [Op.in]: invalidTokens } } }
                     );
                     infoLogger.info(`Removed ${invalidTokens.length} invalid FCM tokens`);
                 }
