@@ -32,6 +32,7 @@ import { adsRouterV1 } from './modules/ads/v1/ads.routes.js';
 import { dashboardRouterV1 } from './modules/dashboard/v1/dashboard.routes.js';
 import otpRouter from './modules/otp/v1/otp.routes.js';
 import adminSettingsRouter from './modules/admin-settings/v1/admin-settings.routes.js';
+import { beforeAfterHomeRouterV1 } from './modules/before-after-home/v1/before-after-home.routes.js';
 
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { notFoundMiddleware } from './middleware/not-found.middleware.js';
@@ -86,6 +87,7 @@ export function initializeApp(app: express.Application) {
     app.use('/api/v1/feedback', feedbackRouterV1);
     app.use('/api/v1/notifications', notificationRouterV1);
     app.use('/api/v1/ads', adsRouterV1);
+    app.use('/api/v1/before-after-home', beforeAfterHomeRouterV1);
     app.use('/api/v1/dashboard', dashboardRouterV1);
     app.use('/api/v1/otp', otpRouter);
     app.use('/api/v1/admin/settings', adminSettingsRouter);
