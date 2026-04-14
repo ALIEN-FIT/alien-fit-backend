@@ -75,7 +75,7 @@ export async function sendMessageAsUserController(req: Request, res: Response): 
 }
 
 export async function listChatsController(req: Request, res: Response): Promise<void> {
-    const { page = 1, limit = 50 } = req.query;
+    const { page = 1, limit = 10000 } = req.query;
     const result = await ChatService.listUserChats({
         page: Number(page),
         limit: Number(limit),
