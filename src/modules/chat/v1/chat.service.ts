@@ -31,7 +31,7 @@ const MESSAGE_MEDIA_INCLUDE = {
     through: { attributes: ['sortOrder'] },
 };
 
-const DEFAULT_PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 10000;
 
 export class ChatService {
     static async getOrCreateUserChat(userId: string): Promise<ChatEntity> {
