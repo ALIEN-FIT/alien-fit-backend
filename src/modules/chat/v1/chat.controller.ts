@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
-import { ChatService } from './chat.service.js';
+import { ChatListStatusFilter, ChatService } from './chat.service.js';
 import { PresenceService } from './presence.service.js';
 import { Roles } from '../../../constants/roles.js';
 import { MessageEntity, SenderRole } from './entity/message.entity.js';
@@ -9,6 +9,7 @@ import { UserService } from '../../user/v1/user.service.js';
 import { UserEntity } from '../../user/v1/entity/user.entity.js';
 import { NotificationService } from '../../notification/v1/notification.service.js';
 import { NotificationTypes } from '../../../constants/notification-type.js';
+import { SubscriptionEntity } from '../../subscription/v1/entity/subscription.entity.js';
 
 export async function getMyChatController(req: Request, res: Response): Promise<void> {
     const userId = req.user!.id.toString();
@@ -46,7 +47,7 @@ export async function getMyMessagesController(req: Request, res: Response): Prom
 
 export async function sendMessageAsUserController(req: Request, res: Response): Promise<void> {
     const userId = req.user!.id.toString();
-    const { content, mediaIds } = req.body;
+    const { content, mediaIds, parentMessageId } = req.body;
 
     const { message } = await ChatService.sendMessage({
         userId,
@@ -54,6 +55,7 @@ export async function sendMessageAsUserController(req: Request, res: Response): 
         senderRole: Roles.USER as SenderRole,
         content: content ?? '',
         mediaIds,
+        parentMessageId,
     });
 
     const trimmed = typeof content === 'string' ? content.trim() : '';
@@ -75,14 +77,18 @@ export async function sendMessageAsUserController(req: Request, res: Response): 
 }
 
 export async function listChatsController(req: Request, res: Response): Promise<void> {
-    const { page = 1, limit = 10000 } = req.query;
+    const { page = 1, limit = 10000, active, validSubscription, status } = req.query;
     const result = await ChatService.listUserChats({
         page: Number(page),
         limit: Number(limit),
+        active: parseOptionalBoolean(active),
+        validSubscription: parseOptionalBoolean(validSubscription),
+        status: typeof status === 'string' ? status as ChatListStatusFilter : undefined,
     });
 
     const presences = await Promise.all(result.chats.map((chat) => PresenceService.getPresence(chat.userId)));
     const unreadByChat = result.unreadByChat ?? {};
+    const lastMessageByChat = result.lastMessageByChat ?? {};
 
     res.status(StatusCodes.OK).json({
         status: 'success',
@@ -91,6 +97,7 @@ export async function listChatsController(req: Request, res: Response): Promise<
             user: mapChatUser(chat.get('user')),
             lastMessageAt: chat.lastMessageAt,
             lastMessagePreview: chat.lastMessagePreview,
+            lastMessage: formatLastChatMessage(lastMessageByChat[chat.id]),
             presence: presences[index],
             unreadCount: unreadByChat[chat.id] ?? 0,
         })),
@@ -99,6 +106,7 @@ export async function listChatsController(req: Request, res: Response): Promise<
             limit: result.limit,
             total: result.total,
             totalPages: result.totalPages,
+            unreadChatCounters: result.unreadChatCounters,
         },
     });
 }
@@ -156,7 +164,7 @@ export async function sendMessageAsTrainerController(req: Request, res: Response
     }
 
     const userId = req.params.userId;
-    const { content, mediaIds } = req.body;
+    const { content, mediaIds, parentMessageId } = req.body;
 
     const senderRole = sender.role as SenderRole;
     const { message } = await ChatService.sendMessage({
@@ -165,6 +173,7 @@ export async function sendMessageAsTrainerController(req: Request, res: Response
         senderRole,
         content: content ?? '',
         mediaIds,
+        parentMessageId,
     });
 
     const trimmed = typeof content === 'string' ? content.trim() : '';
@@ -207,9 +216,13 @@ export async function getUserPresenceController(req: Request, res: Response): Pr
 function mapMessageForUserViewer(message: MessageEntity, viewerId: string) {
     const senderType = message.senderRole === Roles.USER ? 'user' : 'trainer';
     const isMine = message.senderId === viewerId;
+    const reply = formatReplyMeta(message);
 
     return {
         id: message.id,
+        parentMessageId: reply?.id ?? null,
+        parentMessagePreview: reply?.preview ?? null,
+        reply,
         content: message.content ?? '',
         messageType: message.messageType,
         media: formatMessageMedia(message),
@@ -221,11 +234,16 @@ function mapMessageForUserViewer(message: MessageEntity, viewerId: string) {
 }
 
 function mapMessageForTrainerViewer(message: MessageEntity) {
+    const reply = formatReplyMeta(message);
+
     return {
         id: message.id,
         chatId: message.chatId,
         senderId: message.senderId,
         senderRole: message.senderRole,
+        parentMessageId: reply?.id ?? null,
+        parentMessagePreview: reply?.preview ?? null,
+        reply,
         messageType: message.messageType,
         content: message.content ?? '',
         media: formatMessageMedia(message),
@@ -240,13 +258,28 @@ function mapChatUser(user: unknown) {
         return null;
     }
 
+    const subscription = getIncludedSubscription(typedUser);
+    const validSubscription = hasValidSubscription(subscription);
+
     return {
         id: typedUser.id,
         name: typedUser.name,
         provider: typedUser.provider,
+        gender: typedUser.gender ?? null,
         imageId: typedUser.imageId,
         isOnline: typedUser.isOnline,
         lastSeen: typedUser.lastSeen,
+        active: typedUser.isOnline,
+        validSubscription,
+        subscription: subscription ? {
+            isActive: subscription.isActive,
+            isSubscribed: subscription.isSubscribed,
+            isFrozen: subscription.isFrozen,
+            startDate: subscription.startDate,
+            endDate: subscription.endDate,
+            planType: subscription.planType,
+            valid: validSubscription,
+        } : null,
     };
 }
 
@@ -264,4 +297,96 @@ function formatMessageMedia(message: MessageEntity) {
             return { ...rest, sortOrder };
         })
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+}
+
+function formatLastChatMessage(message?: MessageEntity | null) {
+    if (!message) {
+        return null;
+    }
+
+    const media = formatMessageMedia(message);
+    const mediaTypes = Array.from(new Set(
+        media
+            .map((item) => item?.mediaType)
+            .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    ));
+
+    return {
+        id: message.id,
+        chatId: message.chatId,
+        senderId: message.senderId,
+        senderRole: message.senderRole,
+        parentMessageId: message.parentMessageId ?? null,
+        messageType: message.messageType,
+        content: message.content ?? '',
+        createdAt: message.createdAt,
+        mediaType: mediaTypes[0] ?? null,
+        mediaTypes,
+        hasMedia: media.length > 0,
+    };
+}
+
+function parseOptionalBoolean(value: unknown): boolean | undefined {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (value === 'true') {
+        return true;
+    }
+
+    if (value === 'false') {
+        return false;
+    }
+
+    return undefined;
+}
+
+function getIncludedSubscription(user: UserEntity): SubscriptionEntity | null {
+    return (user.get('subscription') as SubscriptionEntity | null) ?? null;
+}
+
+function hasValidSubscription(subscription: SubscriptionEntity | null): boolean {
+    if (!subscription?.endDate) {
+        return false;
+    }
+
+    return Boolean(subscription.isActive)
+        && Boolean(subscription.isSubscribed)
+        && !subscription.isFrozen
+        && subscription.endDate.getTime() >= Date.now();
+}
+
+function formatReplyMeta(message: MessageEntity) {
+    const parentMessage = getParentMessage(message);
+    if (!parentMessage) {
+        return null;
+    }
+
+    return {
+        id: parentMessage.id,
+        preview: buildReplyPreview(parentMessage),
+    };
+}
+
+function getParentMessage(message: MessageEntity): MessageEntity | null {
+    return (message.get('parentMessage') as MessageEntity | null) ?? null;
+}
+
+function buildReplyPreview(message: MessageEntity): string {
+    const content = (message.content ?? '').trim();
+    if (content) {
+        return content.slice(0, 30);
+    }
+
+    const media = formatMessageMedia(message);
+    if (media.length === 1) {
+        return '[Attachment]';
+    }
+
+    if (media.length > 1) {
+        return `[${media.length} attachments]`;
+    }
+
+    return '';
 }

@@ -196,11 +196,13 @@ clearLogBtn.addEventListener('click', () => { logArea.innerHTML = ''; });
 sendMessageBtn.addEventListener('click', () => {
     const content = document.getElementById('messageContent').value.trim();
     const targetUserId = document.getElementById('targetUserId').value.trim();
+    const parentMessageId = document.getElementById('parentMessageId').value.trim();
     if (!content) return log('Cannot send empty message');
     try {
         ensureSocket();
         const payload = { content };
         if (targetUserId) payload.userId = targetUserId;
+        if (parentMessageId) payload.parentMessageId = parentMessageId;
         socket.emit('chat:send', payload, (response) => log('chat:send ack', response));
         log('Emitted chat:send', payload);
     } catch (error) {

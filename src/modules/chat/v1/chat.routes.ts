@@ -16,6 +16,7 @@ import {
 } from './chat.controller.js';
 import {
     paginationSchema,
+    listChatsSchema,
     sendUserMessageSchema,
     trainerGetMessagesSchema,
     trainerSendMessageWithParamsSchema,
@@ -32,7 +33,7 @@ chatRouterV1.post('/me/messages', validateRequest(sendUserMessageSchema), sendMe
 chatRouterV1.post('/me/messages/read', markMyTrainerMessagesReadController);
 
 chatRouterV1.use(authorizeRoles(Roles.TRAINER, Roles.ADMIN));
-chatRouterV1.get('/users', validateRequest(paginationSchema), listChatsController);
+chatRouterV1.get('/users', validateRequest(listChatsSchema), listChatsController);
 chatRouterV1.get('/users/:userId/messages', validateRequest(trainerGetMessagesSchema), getMessagesForUserController);
 chatRouterV1.post('/users/:userId/messages', validateRequest(trainerSendMessageWithParamsSchema), sendMessageAsTrainerController);
 

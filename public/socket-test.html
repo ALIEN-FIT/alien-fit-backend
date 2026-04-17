@@ -215,6 +215,10 @@
                 <label for="messageContent">Message</label>
                 <textarea id="messageContent" placeholder="Type chat message"></textarea>
             </div>
+            <div>
+                <label for="parentMessageId">Parent Message ID (optional)</label>
+                <input id="parentMessageId" type="text" placeholder="Reply to an existing message UUID">
+            </div>
             <button id="sendMessageBtn">Emit chat:send</button>
         </section>
 

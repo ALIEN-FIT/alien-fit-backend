@@ -13,6 +13,7 @@ export class MessageEntity extends Model {
     declare chatId: string;
     declare senderId: string;
     declare senderRole: SenderRole;
+    declare parentMessageId: string | null;
     declare messageType: MessageType;
     declare content: string | null;
     declare isRead: boolean;
@@ -38,6 +39,11 @@ MessageEntity.init(
         senderRole: {
             type: DataTypes.ENUM(...SenderRoles),
             allowNull: false,
+        },
+        parentMessageId: {
+            type: DataTypes.UUID,
+            allowNull: true,
+            defaultValue: null,
         },
         messageType: {
             type: DataTypes.ENUM(...MessageTypes),

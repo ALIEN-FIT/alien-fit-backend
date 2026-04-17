@@ -151,7 +151,12 @@ export function initializeSocketServer(server: HTTPServer) {
 
         socket.on(SEND_MESSAGE_EVENT, async (payload, callback) => {
             try {
-                const { content, mediaIds, userId: targetUserId } = payload as { content?: string; mediaIds?: string[]; userId?: string };
+                const {
+                    content,
+                    mediaIds,
+                    parentMessageId,
+                    userId: targetUserId,
+                } = payload as { content?: string; mediaIds?: string[]; parentMessageId?: string | null; userId?: string };
                 const resolvedUserId = role === Roles.USER ? userId : targetUserId;
 
                 if (!resolvedUserId) {
@@ -165,6 +170,7 @@ export function initializeSocketServer(server: HTTPServer) {
                     senderRole,
                     content: content ?? '',
                     mediaIds,
+                    parentMessageId,
                 });
 
                 await PresenceService.heartbeat(userId);
@@ -783,8 +789,12 @@ function getUserRoom(userId: string): string {
 function mapMessageForUser(viewerId: string, message: MessageEntity) {
     const senderType = message.senderRole === Roles.USER ? 'user' : 'trainer';
     const isMine = message.senderId === viewerId;
+    const reply = formatReplyMeta(message);
     return {
         id: message.id,
+        parentMessageId: reply?.id ?? null,
+        parentMessagePreview: reply?.preview ?? null,
+        reply,
         content: message.content ?? '',
         messageType: message.messageType,
         media: formatMessageMedia(message),
@@ -796,11 +806,15 @@ function mapMessageForUser(viewerId: string, message: MessageEntity) {
 }
 
 function mapMessageForTrainer(message: MessageEntity) {
+    const reply = formatReplyMeta(message);
     return {
         id: message.id,
         chatId: message.chatId,
         senderId: message.senderId,
         senderRole: message.senderRole,
+        parentMessageId: reply?.id ?? null,
+        parentMessagePreview: reply?.preview ?? null,
+        reply,
         messageType: message.messageType,
         content: message.content ?? '',
         media: formatMessageMedia(message),
@@ -823,6 +837,40 @@ function formatMessageMedia(message: MessageEntity) {
             return { ...rest, sortOrder };
         })
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+}
+
+function formatReplyMeta(message: MessageEntity) {
+    const parentMessage = getParentMessage(message);
+    if (!parentMessage) {
+        return null;
+    }
+
+    return {
+        id: parentMessage.id,
+        preview: buildReplyPreview(parentMessage),
+    };
+}
+
+function getParentMessage(message: MessageEntity): MessageEntity | null {
+    return (message.get('parentMessage') as MessageEntity | null) ?? null;
+}
+
+function buildReplyPreview(message: MessageEntity): string {
+    const content = (message.content ?? '').trim();
+    if (content) {
+        return content.slice(0, 30);
+    }
+
+    const media = formatMessageMedia(message);
+    if (media.length === 1) {
+        return '[Attachment]';
+    }
+
+    if (media.length > 1) {
+        return `[${media.length} attachments]`;
+    }
+
+    return '';
 }
 
 function startHeartbeatLoop(socket: Socket, userId: string) {

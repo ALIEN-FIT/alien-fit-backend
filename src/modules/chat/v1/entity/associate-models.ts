@@ -12,6 +12,8 @@ MessageEntity.belongsTo(ChatEntity, { foreignKey: 'chatId', as: 'chat' });
 
 MessageEntity.belongsTo(UserEntity, { foreignKey: 'senderId', as: 'sender', onDelete: 'CASCADE' });
 UserEntity.hasMany(MessageEntity, { foreignKey: 'senderId', as: 'sentMessages', onDelete: 'CASCADE', hooks: true });
+MessageEntity.belongsTo(MessageEntity, { foreignKey: 'parentMessageId', as: 'parentMessage' });
+MessageEntity.hasMany(MessageEntity, { foreignKey: 'parentMessageId', as: 'replies' });
 
 MessageEntity.belongsToMany(MediaEntity, {
     through: MessageMediaEntity,
