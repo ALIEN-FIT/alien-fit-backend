@@ -31,6 +31,21 @@ export async function getUserProfileController(req: Request, res: Response): Pro
   });
 }
 
+export async function getUserProfileHistoryController(req: Request, res: Response): Promise<void> {
+  const userId = req.params.userId || req.user.id;
+  const profiles = await UserProfileService.getUserProfileHistory(userId);
+
+  res.status(StatusCodes.OK).json({
+    status: 'success',
+    data: {
+      profiles,
+      meta: {
+        total: profiles.length,
+      },
+    }
+  });
+}
+
 export async function createOrUpdateUserProfileController(req: Request, res: Response): Promise<void> {
   const userId = (req.params.userId ?? req.user!.id).toString();
   const result = await UserProfileService.createOrUpdateUserProfile(req.user!, userId, req.body);

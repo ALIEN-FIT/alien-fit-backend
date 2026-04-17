@@ -9,7 +9,6 @@ import { addDays, startOfDayUTC } from '../../../../utils/date.utils.js';
 import { SubscriptionService } from '../../../subscription/v1/subscription.service.js';
 import { AdminSettingsService } from '../../../admin-settings/v1/admin-settings.service.js';
 import { DietMealItemEntity, DietPlanDayEntity } from './entity/diet-plan.entity.js';
-import { sequelize } from '../../../../database/db-config.js';
 
 interface DietMealInput {
     mealName?: string;
@@ -110,6 +109,15 @@ export class DietPlanService {
         return plan;
     }
 
+    static async getDietPlanHistory(actor: UserEntity, userId: string): Promise<DietPlanEntity[]> {
+        if (actor.role !== Roles.ADMIN && actor.id !== userId) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Not allowed to view this diet plan history');
+        }
+
+        await UserService.getUserById(userId);
+        return DietPlanRepository.listByUserId(userId);
+    }
+
     static async updatePlanDayByPlanId(
         actor: UserEntity,
         planId: string,
@@ -120,43 +128,18 @@ export class DietPlanService {
             throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust diet plans');
         }
 
-        const plan = await DietPlanRepository.findById(planId);
-        if (!plan) {
-            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet plan not found');
-        }
-
-        const day = await DietPlanDayEntity.findOne({ where: { planId, dayIndex } });
+        const plan = await this.getEditablePlanVersion(planId);
+        const snapshot = this.clonePlanSnapshot(plan);
+        const day = snapshot.days.find((currentDay) => currentDay.dayIndex === dayIndex);
         if (!day) {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet plan day not found');
         }
 
         const mealsInput = payload.meals ? this.normalizeMeals(payload.meals) : [];
         const snacksInput = payload.snacks ? this.normalizeMeals(payload.snacks) : [];
+        day.meals = this.buildDietEntries(mealsInput, snacksInput);
 
-        await sequelize.transaction(async (transaction) => {
-            await DietMealItemEntity.destroy({ where: { dayId: day.id }, transaction });
-
-            const allItems = [
-                ...mealsInput.map((m) => ({
-                    mealName: m.mealName && m.mealName.length > 0 ? m.mealName : `Meal ${m.order}`,
-                    order: m.order,
-                    foods: [{ text: m.text, itemType: 'MEAL' }],
-                    dayId: day.id,
-                })),
-                ...snacksInput.map((m) => ({
-                    mealName: m.mealName && m.mealName.length > 0 ? m.mealName : `Snack ${m.order}`,
-                    order: m.order,
-                    foods: [{ text: m.text, itemType: 'SNACK' }],
-                    dayId: day.id,
-                })),
-            ];
-
-            if (allItems.length > 0) {
-                await DietMealItemEntity.bulkCreate(allItems, { transaction });
-            }
-        });
-
-        return (await DietPlanRepository.findById(planId)) as DietPlanEntity;
+        return this.createPlanVersion(snapshot);
     }
 
     static async clearPlanDayByPlanId(actor: UserEntity, planId: string, dayIndex: number): Promise<DietPlanEntity> {
@@ -164,13 +147,15 @@ export class DietPlanService {
             throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust diet plans');
         }
 
-        const day = await DietPlanDayEntity.findOne({ where: { planId, dayIndex } });
+        const plan = await this.getEditablePlanVersion(planId);
+        const snapshot = this.clonePlanSnapshot(plan);
+        const day = snapshot.days.find((currentDay) => currentDay.dayIndex === dayIndex);
         if (!day) {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet plan day not found');
         }
 
-        await DietMealItemEntity.destroy({ where: { dayId: day.id } });
-        return (await DietPlanRepository.findById(planId)) as DietPlanEntity;
+        day.meals = [];
+        return this.createPlanVersion(snapshot);
     }
 
     static async updateMealById(actor: UserEntity, mealItemId: string, payload: UpdateDietMealPayload): Promise<DietPlanEntity> {
@@ -185,18 +170,25 @@ export class DietPlanService {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet meal item not found');
         }
 
-        const currentText = String((meal.foods?.[0] as any)?.text ?? '');
-        const currentItemType = String((meal.foods?.[0] as any)?.itemType ?? 'MEAL');
+        const day = (meal as any).day as DietPlanDayEntity;
+        const plan = await this.getEditablePlanVersion(day.planId);
+        const snapshot = this.clonePlanSnapshot(plan);
+        const targetDay = snapshot.days.find((currentDay) => currentDay.id === day.id);
+        const targetMeal = targetDay?.meals.find((currentMeal) => currentMeal.id === mealItemId);
+        if (!targetDay || !targetMeal) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet meal item not found');
+        }
+
+        const currentText = String((targetMeal.foods?.[0] as any)?.text ?? '');
+        const currentItemType = String((targetMeal.foods?.[0] as any)?.itemType ?? 'MEAL');
         const itemType = payload.itemType ?? (currentItemType === 'SNACK' ? 'SNACK' : 'MEAL');
 
-        await meal.update({
-            mealName: payload.mealName ?? meal.mealName,
-            order: payload.order ?? meal.order,
-            foods: [{ text: payload.text ?? currentText, itemType }],
-        });
+        targetMeal.mealName = payload.mealName ?? targetMeal.mealName;
+        targetMeal.order = payload.order ?? targetMeal.order;
+        targetMeal.foods = [{ text: payload.text ?? currentText, itemType }];
+        targetDay.meals = this.sortMealsByOrder(targetDay.meals);
 
-        const day = (meal as any).day as DietPlanDayEntity;
-        return (await DietPlanRepository.findById(day.planId)) as DietPlanEntity;
+        return this.createPlanVersion(snapshot);
     }
 
     static async deleteMealById(actor: UserEntity, mealItemId: string): Promise<DietPlanEntity> {
@@ -212,24 +204,15 @@ export class DietPlanService {
         }
 
         const day = (meal as any).day as DietPlanDayEntity;
-        await sequelize.transaction(async (transaction) => {
-            await meal.destroy({ transaction });
+        const plan = await this.getEditablePlanVersion(day.planId);
+        const snapshot = this.clonePlanSnapshot(plan);
+        const targetDay = snapshot.days.find((currentDay) => currentDay.id === day.id);
+        if (!targetDay) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet plan day not found');
+        }
 
-            const remaining = await DietMealItemEntity.findAll({
-                where: { dayId: day.id },
-                order: [['order', 'ASC']],
-                transaction,
-            });
-
-            for (let index = 0; index < remaining.length; index += 1) {
-                const current = remaining[index];
-                if (current.order !== index + 1) {
-                    await current.update({ order: index + 1 }, { transaction });
-                }
-            }
-        });
-
-        return (await DietPlanRepository.findById(day.planId)) as DietPlanEntity;
+        targetDay.meals = this.reorderMeals(targetDay.meals.filter((currentMeal) => currentMeal.id !== mealItemId));
+        return this.createPlanVersion(snapshot);
     }
 
     private static normalizeMeals(meals: DietMealInput[]): DietMealInput[] {
@@ -238,6 +221,106 @@ export class DietPlanService {
             order: Number(m.order),
             text: String(m.text ?? '').trim(),
         }));
+    }
+
+    private static buildDietEntries(meals: DietMealInput[], snacks: DietMealInput[]) {
+        return this.sortMealsByOrder([
+            ...meals.map((meal) => ({
+                mealName: meal.mealName && meal.mealName.length > 0 ? meal.mealName : `Meal ${meal.order}`,
+                order: meal.order,
+                foods: [{ text: meal.text, itemType: 'MEAL' as const }],
+            })),
+            ...snacks.map((snack) => ({
+                mealName: snack.mealName && snack.mealName.length > 0 ? snack.mealName : `Snack ${snack.order}`,
+                order: snack.order,
+                foods: [{ text: snack.text, itemType: 'SNACK' as const }],
+            })),
+        ]);
+    }
+
+    private static sortMealsByOrder<T extends { order: number }>(meals: T[]): T[] {
+        return meals
+            .slice()
+            .sort((a, b) => a.order - b.order);
+    }
+
+    private static reorderMeals<T extends { order: number }>(meals: T[]): T[] {
+        return this.sortMealsByOrder(meals)
+            .map((meal, index) => ({
+                ...meal,
+                order: index + 1,
+            }));
+    }
+
+    private static clonePlanSnapshot(plan: DietPlanEntity) {
+        return JSON.parse(JSON.stringify(plan.toJSON())) as {
+            id: string;
+            userId: string | null;
+            startDate: string;
+            endDate: string;
+            recommendedWaterIntakeMl: number | null;
+            days: Array<{
+                id: string;
+                dayIndex: number;
+                date: string;
+                weekNumber: number;
+                meals: Array<{
+                    id?: string;
+                    mealName: string | null;
+                    order: number;
+                    foods: Array<Record<string, unknown>>;
+                }>;
+            }>;
+        };
+    }
+
+    private static async getEditablePlanVersion(planId: string): Promise<DietPlanEntity> {
+        const plan = await DietPlanRepository.findById(planId);
+        if (!plan) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Diet plan not found');
+        }
+
+        if (plan.userId) {
+            const latestPlan = await DietPlanRepository.findByUserId(plan.userId);
+            if (latestPlan && latestPlan.id !== plan.id) {
+                throw new HttpResponseError(StatusCodes.CONFLICT, 'Only the latest diet plan version can be updated');
+            }
+        }
+
+        return plan;
+    }
+
+    private static async createPlanVersion(snapshot: ReturnType<typeof DietPlanService.clonePlanSnapshot>): Promise<DietPlanEntity> {
+        const days = (snapshot.days ?? [])
+            .slice()
+            .sort((a, b) => a.dayIndex - b.dayIndex)
+            .map((day) => ({
+                dayIndex: day.dayIndex,
+                date: new Date(day.date),
+                weekNumber: day.weekNumber,
+                meals: this.sortMealsByOrder(day.meals ?? []).map((meal) => ({
+                    mealName: meal.mealName ?? null,
+                    order: meal.order,
+                    foods: Array.isArray(meal.foods) ? meal.foods : [],
+                })),
+            }));
+
+        const created = snapshot.userId
+            ? await DietPlanRepository.createPlan(
+                snapshot.userId,
+                new Date(snapshot.startDate),
+                new Date(snapshot.endDate),
+                days,
+                snapshot.recommendedWaterIntakeMl ?? null,
+            )
+            : await DietPlanRepository.createDefaultPlan(
+                new Date(snapshot.startDate),
+                new Date(snapshot.endDate),
+                days,
+                snapshot.recommendedWaterIntakeMl ?? null,
+            );
+
+        return (await DietPlanRepository.findById(created.id)) as DietPlanEntity;
     }
 
     private static buildDaysPayload(startDate: Date, templateMeals: DietMealInput[], templateSnacks: DietMealInput[]) {

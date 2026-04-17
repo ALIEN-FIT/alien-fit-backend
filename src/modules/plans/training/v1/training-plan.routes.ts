@@ -5,6 +5,7 @@ import { validateRequest } from '../../../../middleware/validation.middleware.js
 import {
     createTrainingPlanWeekController,
     getTrainingPlanController,
+    getTrainingPlanHistoryController,
     getMyTrainingPlanController,
     adminUpdateTrainingPlanDayController,
     adminClearTrainingPlanDayController,
@@ -39,9 +40,21 @@ trainingPlanRouterV1.get(
 );
 
 trainingPlanRouterV1.get(
+    '/me/history',
+    getTrainingPlanHistoryController,
+);
+
+trainingPlanRouterV1.get(
     '/:userId',
     validateRequest(trainingPlanUserParamSchema),
     getTrainingPlanController,
+);
+
+trainingPlanRouterV1.get(
+    '/:userId/history',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(trainingPlanUserParamSchema),
+    getTrainingPlanHistoryController,
 );
 
 trainingPlanRouterV1.patch(

@@ -85,9 +85,17 @@ UserProfileEntity.init(
         modelName: 'UserProfile',
         tableName: 'user_profiles',
         timestamps: true,
+        indexes: [
+            {
+                fields: ['userId'],
+            },
+            {
+                fields: ['userId', 'createdAt'],
+            },
+        ],
     }
 );
 
 // Relations
-UserEntity.hasOne(UserProfileEntity, { foreignKey: 'userId', as: 'profile', onDelete: 'CASCADE', hooks: true });
+UserEntity.hasMany(UserProfileEntity, { foreignKey: 'userId', as: 'profiles', onDelete: 'CASCADE', hooks: true });
 UserProfileEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });

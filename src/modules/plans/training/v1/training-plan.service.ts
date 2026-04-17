@@ -5,13 +5,12 @@ import { TrainingPlanRepository } from './training-plan.repository.js';
 import { TrainingPlanEntity } from './entity/training-plan.entity.js';
 import { Roles } from '../../../../constants/roles.js';
 import { UserEntity } from '../../../user/v1/entity/user.entity.js';
-import { addDays, addWeeks, startOfDayUTC } from '../../../../utils/date.utils.js';
+import { addWeeks, startOfDayUTC } from '../../../../utils/date.utils.js';
 import { TrainingVideoService } from '../../../training-video/v1/training-video.service.js';
 import { TrainingVideoEntity } from '../../../training-video/v1/entity/training-video.entity.js';
 import { SubscriptionService } from '../../../subscription/v1/subscription.service.js';
 import { AdminSettingsService } from '../../../admin-settings/v1/admin-settings.service.js';
 import { TrainingPlanDayEntity, TrainingPlanItemEntity } from './entity/training-plan.entity.js';
-import { sequelize } from '../../../../database/db-config.js';
 
 interface SupersetItemInput {
     trainingVideoId: string;
@@ -126,6 +125,15 @@ export class TrainingPlanService {
         return plan;
     }
 
+    static async getTrainingPlanHistory(actor: UserEntity, userId: string): Promise<TrainingPlanEntity[]> {
+        if (actor.role !== Roles.ADMIN && actor.id !== userId) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Not allowed to view this training plan history');
+        }
+
+        await UserService.getUserById(userId);
+        return TrainingPlanRepository.listByUserId(userId);
+    }
+
     static getCurrentWeekNumber(startDate: Date): number {
         const now = startOfDayUTC(new Date());
         const start = startOfDayUTC(startDate);
@@ -146,12 +154,9 @@ export class TrainingPlanService {
             throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust training plans');
         }
 
-        const plan = await TrainingPlanRepository.findById(planId);
-        if (!plan) {
-            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan not found');
-        }
-
-        const day = await TrainingPlanDayEntity.findOne({ where: { planId, dayIndex } });
+        const plan = await this.getEditablePlanVersion(planId);
+        const snapshot = this.clonePlanSnapshot(plan);
+        const day = snapshot.days.find((currentDay) => currentDay.dayIndex === dayIndex);
         if (!day) {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan day not found');
         }
@@ -162,40 +167,44 @@ export class TrainingPlanService {
             const normalizedItems = payload.items.map((item) => this.normalizeItem(item, trainingVideosMap));
             this.assertCircuitGroupsAreValid(normalizedItems);
 
-            await sequelize.transaction(async (transaction) => {
-                await TrainingPlanItemEntity.destroy({ where: { dayId: day.id }, transaction });
-                if (normalizedItems.length > 0) {
-                    await TrainingPlanItemEntity.bulkCreate(
-                        normalizedItems.map((item, index) => ({
-                            dayId: day.id,
-                            order: index + 1,
-                            title: item.trainingVideo.title,
-                            videoLink: item.trainingVideo.videoUrl,
-                            description: item.trainingVideo.description ?? null,
-                            duration: null,
-                            repeats: item.repeats,
-                            sets: item.sets,
-                            trainingVideoId: item.trainingVideoId,
-                            isSuperset: Boolean(item.isSuperset),
-                            itemType: item.itemType,
-                            supersetItems: item.itemType === 'SUPERSET' ? item.supersetItems ?? [] : null,
-                            extraVideos: item.itemType === 'SUPERSET' ? item.extraVideos ?? [] : null,
-                            dropsetConfig: item.itemType === 'DROPSET' ? item.dropsetConfig ?? null : null,
-                            circuitGroup: item.itemType === 'CIRCUIT' ? item.circuitGroup ?? null : null,
-                        })),
-                        { transaction },
-                    );
-                }
+            day.items = normalizedItems.map((item, index) => ({
+                order: index + 1,
+                title: item.trainingVideo.title,
+                videoLink: item.trainingVideo.videoUrl,
+                description: item.trainingVideo.description ?? null,
+                duration: null,
+                repeats: item.repeats,
+                sets: item.sets,
+                trainingVideoId: item.trainingVideoId,
+                isSuperset: Boolean(item.isSuperset),
+                itemType: item.itemType,
+                supersetItems: item.itemType === 'SUPERSET'
+                    ? (item.supersetItems ?? []).map((superset) => ({
+                        trainingVideoId: superset.trainingVideoId,
+                        sets: superset.sets,
+                        repeats: superset.repeats,
+                    }))
+                    : null,
+                extraVideos: item.itemType === 'SUPERSET'
+                    ? (item.extraVideos ?? []).map((video) => ({ trainingVideoId: video.trainingVideoId }))
+                    : null,
+                dropsetConfig: item.itemType === 'DROPSET'
+                    ? {
+                        dropPercents: item.dropsetConfig?.dropPercents ?? [],
+                        ...(item.dropsetConfig?.restSeconds !== undefined ? { restSeconds: item.dropsetConfig.restSeconds } : {}),
+                    }
+                    : null,
+                circuitGroup: item.itemType === 'CIRCUIT' ? item.circuitGroup ?? null : null,
+            }));
 
-                if (payload.name !== undefined) {
-                    await day.update({ name: payload.name?.trim() || null }, { transaction });
-                }
-            });
+            if (payload.name !== undefined) {
+                day.name = payload.name?.trim() || null;
+            }
         } else if (payload.name !== undefined) {
-            await day.update({ name: payload.name?.trim() || null });
+            day.name = payload.name?.trim() || null;
         }
 
-        return (await TrainingPlanRepository.findById(planId)) as TrainingPlanEntity;
+        return this.createPlanVersion(snapshot);
     }
 
     static async clearPlanDayByPlanId(actor: UserEntity, planId: string, dayIndex: number): Promise<TrainingPlanEntity> {
@@ -203,13 +212,15 @@ export class TrainingPlanService {
             throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust training plans');
         }
 
-        const day = await TrainingPlanDayEntity.findOne({ where: { planId, dayIndex } });
+        const plan = await this.getEditablePlanVersion(planId);
+        const snapshot = this.clonePlanSnapshot(plan);
+        const day = snapshot.days.find((currentDay) => currentDay.dayIndex === dayIndex);
         if (!day) {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan day not found');
         }
 
-        await TrainingPlanItemEntity.destroy({ where: { dayId: day.id } });
-        return (await TrainingPlanRepository.findById(planId)) as TrainingPlanEntity;
+        day.items = [];
+        return this.createPlanVersion(snapshot);
     }
 
     static async updatePlanItemById(
@@ -243,24 +254,42 @@ export class TrainingPlanService {
         const videoIds = this.collectVideoIds([{ name: 'day', items: [currentData] }]);
         const trainingVideosMap = await TrainingVideoService.ensureVideosExist(videoIds);
         const normalized = this.normalizeItem(currentData, trainingVideosMap);
-
-        await item.update({
-            title: normalized.trainingVideo.title,
-            videoLink: normalized.trainingVideo.videoUrl,
-            description: normalized.trainingVideo.description ?? null,
-            repeats: normalized.repeats,
-            sets: normalized.sets,
-            trainingVideoId: normalized.trainingVideoId,
-            isSuperset: normalized.itemType === 'SUPERSET',
-            itemType: normalized.itemType,
-            supersetItems: normalized.itemType === 'SUPERSET' ? normalized.supersetItems ?? [] : null,
-            extraVideos: normalized.itemType === 'SUPERSET' ? normalized.extraVideos ?? [] : null,
-            dropsetConfig: normalized.itemType === 'DROPSET' ? normalized.dropsetConfig ?? null : null,
-            circuitGroup: normalized.itemType === 'CIRCUIT' ? normalized.circuitGroup ?? null : null,
-        });
-
         const day = (item as any).day as TrainingPlanDayEntity;
-        return (await TrainingPlanRepository.findById(day.planId)) as TrainingPlanEntity;
+        const plan = await this.getEditablePlanVersion(day.planId);
+        const snapshot = this.clonePlanSnapshot(plan);
+        const targetDay = snapshot.days.find((currentDay) => currentDay.id === day.id);
+        const targetItem = targetDay?.items.find((currentItem) => currentItem.id === itemId);
+        if (!targetDay || !targetItem) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan item not found');
+        }
+
+        targetItem.title = normalized.trainingVideo.title;
+        targetItem.videoLink = normalized.trainingVideo.videoUrl;
+        targetItem.description = normalized.trainingVideo.description ?? null;
+        targetItem.repeats = normalized.repeats;
+        targetItem.sets = normalized.sets;
+        targetItem.trainingVideoId = normalized.trainingVideoId;
+        targetItem.isSuperset = normalized.itemType === 'SUPERSET';
+        targetItem.itemType = normalized.itemType;
+        targetItem.supersetItems = normalized.itemType === 'SUPERSET'
+            ? (normalized.supersetItems ?? []).map((superset) => ({
+                trainingVideoId: superset.trainingVideoId,
+                sets: superset.sets,
+                repeats: superset.repeats,
+            }))
+            : null;
+        targetItem.extraVideos = normalized.itemType === 'SUPERSET'
+            ? (normalized.extraVideos ?? []).map((video) => ({ trainingVideoId: video.trainingVideoId }))
+            : null;
+        targetItem.dropsetConfig = normalized.itemType === 'DROPSET'
+            ? {
+                dropPercents: normalized.dropsetConfig?.dropPercents ?? [],
+                ...(normalized.dropsetConfig?.restSeconds !== undefined ? { restSeconds: normalized.dropsetConfig.restSeconds } : {}),
+            }
+            : null;
+        targetItem.circuitGroup = normalized.itemType === 'CIRCUIT' ? normalized.circuitGroup ?? null : null;
+
+        return this.createPlanVersion(snapshot);
     }
 
     static async deletePlanItemById(actor: UserEntity, itemId: string): Promise<TrainingPlanEntity> {
@@ -276,24 +305,21 @@ export class TrainingPlanService {
         }
 
         const day = (item as any).day as TrainingPlanDayEntity;
+        const plan = await this.getEditablePlanVersion(day.planId);
+        const snapshot = this.clonePlanSnapshot(plan);
+        const targetDay = snapshot.days.find((currentDay) => currentDay.id === day.id);
+        if (!targetDay) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan day not found');
+        }
 
-        await sequelize.transaction(async (transaction) => {
-            await item.destroy({ transaction });
-            const remaining = await TrainingPlanItemEntity.findAll({
-                where: { dayId: day.id },
-                order: [['order', 'ASC']],
-                transaction,
-            });
+        targetDay.items = targetDay.items
+            .filter((currentItem) => currentItem.id !== itemId)
+            .map((currentItem, index) => ({
+                ...currentItem,
+                order: index + 1,
+            }));
 
-            for (let index = 0; index < remaining.length; index += 1) {
-                const current = remaining[index];
-                if (current.order !== index + 1) {
-                    await current.update({ order: index + 1 }, { transaction });
-                }
-            }
-        });
-
-        return (await TrainingPlanRepository.findById(day.planId)) as TrainingPlanEntity;
+        return this.createPlanVersion(snapshot);
     }
 
     private static collectVideoIds(days: TrainingPlanDayInput[]): string[] {
@@ -514,6 +540,103 @@ export class TrainingPlanService {
                 items,
             };
         });
+    }
+
+    private static clonePlanSnapshot(plan: TrainingPlanEntity) {
+        return JSON.parse(JSON.stringify(plan.toJSON())) as {
+            id: string;
+            userId: string | null;
+            startDate: string;
+            endDate: string;
+            days: Array<{
+                id: string;
+                dayIndex: number;
+                name: string | null;
+                date: string;
+                weekNumber: number;
+                items: Array<{
+                    id?: string;
+                    order: number;
+                    title: string;
+                    videoLink: string | null;
+                    description: string | null;
+                    duration: number | null;
+                    repeats: number | null;
+                    sets: number | null;
+                    trainingVideoId: string;
+                    isSuperset: boolean;
+                    itemType: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
+                    supersetItems: Array<Record<string, unknown>> | null;
+                    extraVideos: Array<Record<string, unknown>> | null;
+                    dropsetConfig: Record<string, unknown> | null;
+                    circuitGroup: string | null;
+                }>;
+            }>;
+        };
+    }
+
+    private static async getEditablePlanVersion(planId: string): Promise<TrainingPlanEntity> {
+        const plan = await TrainingPlanRepository.findById(planId);
+        if (!plan) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan not found');
+        }
+
+        if (plan.userId) {
+            const latestPlan = await TrainingPlanRepository.findByUserId(plan.userId);
+            if (latestPlan && latestPlan.id !== plan.id) {
+                throw new HttpResponseError(StatusCodes.CONFLICT, 'Only the latest training plan version can be updated');
+            }
+        }
+
+        return plan;
+    }
+
+    private static async createPlanVersion(
+        snapshot: ReturnType<typeof TrainingPlanService.clonePlanSnapshot>,
+    ): Promise<TrainingPlanEntity> {
+        const days = (snapshot.days ?? [])
+            .slice()
+            .sort((a, b) => a.dayIndex - b.dayIndex)
+            .map((day) => ({
+                dayIndex: day.dayIndex,
+                name: day.name ?? null,
+                date: new Date(day.date),
+                weekNumber: day.weekNumber,
+                items: (day.items ?? [])
+                    .slice()
+                    .sort((a, b) => a.order - b.order)
+                    .map((item, index) => ({
+                        order: index + 1,
+                        title: item.title,
+                        videoLink: item.videoLink ?? null,
+                        description: item.description ?? null,
+                        duration: item.duration ?? null,
+                        repeats: item.repeats ?? null,
+                        sets: Number(item.sets ?? 0),
+                        trainingVideoId: item.trainingVideoId,
+                        isSuperset: Boolean(item.isSuperset),
+                        itemType: item.itemType,
+                        supersetItems: item.itemType === 'SUPERSET' ? item.supersetItems ?? [] : null,
+                        extraVideos: item.itemType === 'SUPERSET' ? item.extraVideos ?? [] : null,
+                        dropsetConfig: item.itemType === 'DROPSET' ? item.dropsetConfig ?? null : null,
+                        circuitGroup: item.itemType === 'CIRCUIT' ? item.circuitGroup ?? null : null,
+                    })),
+            }));
+
+        const created = snapshot.userId
+            ? await TrainingPlanRepository.createPlan(
+                snapshot.userId,
+                new Date(snapshot.startDate),
+                new Date(snapshot.endDate),
+                days,
+            )
+            : await TrainingPlanRepository.createDefaultPlan(
+                new Date(snapshot.startDate),
+                new Date(snapshot.endDate),
+                days,
+            );
+
+        return (await TrainingPlanRepository.findById(created.id)) as TrainingPlanEntity;
     }
 }
 

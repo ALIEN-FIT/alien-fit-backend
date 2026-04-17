@@ -8,16 +8,32 @@ import { NotificationTypes } from '../../../constants/notification-type.js';
 import { Roles } from '../../../constants/roles.js';
 
 export class PlanUpdateRequestService {
+    private static async notifyAdminsAboutPendingRequest(userId: string, created: boolean) {
+        const user = await UserService.getUserById(userId);
+        if (user.role !== Roles.USER) {
+            return;
+        }
+
+        await NotificationService.notifyAdminsAndTrainers({
+            type: NotificationTypes.GENERAL,
+            title: created ? 'Plan update request' : 'Plan update request updated',
+            body: created
+                ? `${user.name} (${user.provider}) requested a plan update.`
+                : `${user.name} (${user.provider}) updated a pending plan update request.`,
+            byUserId: user.id.toString(),
+        });
+    }
+
     static async createOrUpdatePendingRequest(
         userId: string,
         type: string,
         payload: Record<string, unknown> | null,
         notes?: string,
     ): Promise<{ request: PlanUpdateRequestEntity; created: boolean }> {
-        const user = await UserService.getUserById(userId);
         const pending = await PlanUpdateRequestRepository.findPendingByUser(userId);
         if (pending) {
             await pending.update({ payload, notes });
+            await this.notifyAdminsAboutPendingRequest(userId, false);
             return { request: pending, created: false };
         }
         const request = await PlanUpdateRequestRepository.create({
@@ -27,15 +43,7 @@ export class PlanUpdateRequestService {
             notes: notes ?? null,
         });
 
-        // Notify admins/trainers only when a new pending request is created by a user.
-        if (user.role === Roles.USER) {
-            await NotificationService.notifyAdminsAndTrainers({
-                type: NotificationTypes.GENERAL,
-                title: 'Plan update request',
-                body: `${user.name} (${user.provider}) requested a plan update.`,
-                byUserId: user.id.toString(),
-            });
-        }
+        await this.notifyAdminsAboutPendingRequest(userId, true);
 
         return { request, created: true };
     }

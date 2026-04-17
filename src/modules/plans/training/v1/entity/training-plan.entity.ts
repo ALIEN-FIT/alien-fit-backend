@@ -75,6 +75,14 @@ TrainingPlanEntity.init(
         modelName: 'TrainingPlan',
         tableName: 'training_plans',
         timestamps: true,
+        indexes: [
+            {
+                fields: ['userId'],
+            },
+            {
+                fields: ['userId', 'createdAt'],
+            },
+        ],
     }
 );
 
@@ -208,7 +216,7 @@ TrainingPlanItemEntity.init(
 );
 
 TrainingPlanEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
-UserEntity.hasOne(TrainingPlanEntity, { foreignKey: 'userId', as: 'trainingPlan', onDelete: 'CASCADE', hooks: true });
+UserEntity.hasMany(TrainingPlanEntity, { foreignKey: 'userId', as: 'trainingPlans', onDelete: 'CASCADE', hooks: true });
 
 TrainingPlanEntity.hasMany(TrainingPlanDayEntity, { foreignKey: 'planId', as: 'days', onDelete: 'CASCADE', hooks: true });
 TrainingPlanDayEntity.belongsTo(TrainingPlanEntity, { foreignKey: 'planId', as: 'plan' });

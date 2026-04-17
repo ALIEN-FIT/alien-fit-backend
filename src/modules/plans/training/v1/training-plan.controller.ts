@@ -262,6 +262,24 @@ export async function getMyTrainingPlanController(req: Request, res: Response): 
     });
 }
 
+export async function getTrainingPlanHistoryController(req: Request, res: Response): Promise<void> {
+    const userId = (req.params.userId ?? req.user!.id).toString();
+    const plans = await TrainingPlanService.getTrainingPlanHistory(req.user!, userId);
+    const trainingPlans = await Promise.all(
+        plans.map((plan) => serializeTrainingPlan(plan) as Promise<SerializedTrainingPlan>)
+    );
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: {
+            trainingPlans,
+            meta: {
+                total: trainingPlans.length,
+            },
+        },
+    });
+}
+
 export async function adminUpdateTrainingPlanDayController(req: Request, res: Response): Promise<void> {
     const { planId, dayIndex } = req.params;
     const plan = await TrainingPlanService.updatePlanDayByPlanId(req.user!, planId, Number(dayIndex), req.body);

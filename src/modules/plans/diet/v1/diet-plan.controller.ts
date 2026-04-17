@@ -148,6 +148,22 @@ export async function getMyDietPlanController(req: Request, res: Response): Prom
     });
 }
 
+export async function getDietPlanHistoryController(req: Request, res: Response): Promise<void> {
+    const userId = (req.params.userId ?? req.user!.id).toString();
+    const plans = await DietPlanService.getDietPlanHistory(req.user!, userId);
+    const dietPlans = await Promise.all(plans.map((plan) => serializeDietPlan(plan)));
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: {
+            dietPlans,
+            meta: {
+                total: dietPlans.length,
+            },
+        },
+    });
+}
+
 export async function adminUpdateDietPlanDayController(req: Request, res: Response): Promise<void> {
     const { planId, dayIndex } = req.params;
     const plan = await DietPlanService.updatePlanDayByPlanId(req.user!, planId, Number(dayIndex), req.body);

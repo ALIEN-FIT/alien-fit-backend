@@ -3,6 +3,7 @@ import { auth, authorizeRoles } from '../../../middleware/authorization.middlewa
 import { validateRequest } from '../../../middleware/validation.middleware.js';
 import {
     getUserProfileController,
+    getUserProfileHistoryController,
     createOrUpdateUserProfileController,
     deleteUserProfileController
 } from './user-profile.controller.js';
@@ -19,6 +20,7 @@ userProfileRouterV1.use(auth);
 
 // Routes for current user's profile
 userProfileRouterV1.get('/me', getUserProfileController);
+userProfileRouterV1.get('/me/history', getUserProfileHistoryController);
 userProfileRouterV1.post('/me', validateRequest(createUpdateUserProfileSchema), createOrUpdateUserProfileController);
 userProfileRouterV1.patch('/me', validateRequest(createUpdateUserProfileSchema), createOrUpdateUserProfileController);
 userProfileRouterV1.delete('/me', deleteUserProfileController);
@@ -26,6 +28,7 @@ userProfileRouterV1.delete('/me', deleteUserProfileController);
 // Routes for specific user's profile (can be used by admins)
 userProfileRouterV1.use(authorizeRoles(Roles.ADMIN));
 
+userProfileRouterV1.get('/:userId/history', validateRequest(getUserProfileSchema), getUserProfileHistoryController);
 userProfileRouterV1.get('/:userId', validateRequest(getUserProfileSchema), getUserProfileController);
 userProfileRouterV1.post('/:userId', validateRequest(createUpdateUserProfileSchema), createOrUpdateUserProfileController);
 userProfileRouterV1.patch('/:userId', validateRequest(createUpdateUserProfileSchema.concat(getUserProfileSchema)), createOrUpdateUserProfileController);
