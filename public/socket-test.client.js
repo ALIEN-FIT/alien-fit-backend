@@ -7,6 +7,8 @@ const disconnectBtn = document.getElementById('disconnectBtn');
 const heartbeatBtn = document.getElementById('heartbeatBtn');
 const clearLogBtn = document.getElementById('clearLogBtn');
 const sendMessageBtn = document.getElementById('sendMessageBtn');
+const updateMessageBtn = document.getElementById('updateMessageBtn');
+const deleteMessageBtn = document.getElementById('deleteMessageBtn');
 const transportModeSelect = document.getElementById('transportMode');
 const restButtons = document.querySelectorAll('#restSection button[data-action]');
 const callOfferBtn = document.getElementById('callOfferBtn');
@@ -126,6 +128,12 @@ connectBtn.addEventListener('click', () => {
     socket.on('chat:message', (payload) => {
         log('Received chat:message', payload);
     });
+    socket.on('chat:message-updated', (payload) => {
+        log('Received chat:message-updated', payload);
+    });
+    socket.on('chat:message-deleted', (payload) => {
+        log('Received chat:message-deleted', payload);
+    });
 
     if (socket?.io?.engine) {
         socket.io.engine.on('upgrade', (transport) => {
@@ -207,6 +215,49 @@ sendMessageBtn.addEventListener('click', () => {
         log('Emitted chat:send', payload);
     } catch (error) {
         log('Emit failed', error.message);
+    }
+});
+
+updateMessageBtn?.addEventListener('click', () => {
+    const content = document.getElementById('messageContent').value;
+    const targetUserId = document.getElementById('targetUserId').value.trim();
+    const parentMessageId = document.getElementById('parentMessageId').value.trim();
+    const messageId = document.getElementById('editMessageId').value.trim();
+
+    if (!messageId) return log('Message ID is required for chat:update');
+    if (content === '' && !parentMessageId) return log('Provide content or parentMessageId for chat:update');
+
+    try {
+        ensureSocket();
+        const payload = { messageId };
+        if (targetUserId) payload.userId = targetUserId;
+        if (content !== '') payload.content = content;
+        if (parentMessageId) {
+            payload.parentMessageId = parentMessageId;
+        } else if (document.getElementById('parentMessageId').value !== '') {
+            payload.parentMessageId = null;
+        }
+        socket.emit('chat:update', payload, (response) => log('chat:update ack', response));
+        log('Emitted chat:update', payload);
+    } catch (error) {
+        log('chat:update failed', error.message);
+    }
+});
+
+deleteMessageBtn?.addEventListener('click', () => {
+    const targetUserId = document.getElementById('targetUserId').value.trim();
+    const messageId = document.getElementById('editMessageId').value.trim();
+
+    if (!messageId) return log('Message ID is required for chat:delete');
+
+    try {
+        ensureSocket();
+        const payload = { messageId };
+        if (targetUserId) payload.userId = targetUserId;
+        socket.emit('chat:delete', payload, (response) => log('chat:delete ack', response));
+        log('Emitted chat:delete', payload);
+    } catch (error) {
+        log('chat:delete failed', error.message);
     }
 });
 

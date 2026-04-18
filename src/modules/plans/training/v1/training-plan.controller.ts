@@ -36,6 +36,7 @@ interface SerializedTrainingPlanItem {
     trainingVideo: SerializedTrainingVideo | null;
     supersetItems: Array<SerializedSupersetItem>;
     extraVideos: Array<{ trainingVideo: SerializedTrainingVideo | null }>;
+    circuitItems: Array<SerializedSupersetItem>;
     dropsetConfig: { dropPercents: number[]; restSeconds?: number } | null;
     circuitGroup: string | null;
     excerciceMetadata: SerializedExcerciceMetadata | null;
@@ -81,7 +82,7 @@ async function serializeTrainingPlan(
 ): Promise<SerializedTrainingPlan | { days: any[], pagination: { page: number, limit: number, total: number } }> {
     const json = plan.toJSON() as any;
     const weeksMap = new Map<number, WeekAccumulator>();
-    const supersetVideoIds = new Set<string>();
+    const relatedVideoIds = new Set<string>();
     const trackingMap = await buildTrackingMap(json.userId, json.days ?? []);
 
     // Filter days based on options
@@ -96,7 +97,7 @@ async function serializeTrainingPlan(
         const endIndex = startIndex + options.limit;
         const paginatedDays = filteredDays.slice(startIndex, endIndex);
 
-        const processedDays = await processDays(paginatedDays, trackingMap, supersetVideoIds);
+        const processedDays = await processDays(paginatedDays, trackingMap, relatedVideoIds);
 
         return {
             days: processedDays,
@@ -122,12 +123,17 @@ async function serializeTrainingPlan(
         const items = (day.items ?? []).map((item) => {
             for (const superset of item.supersetItems ?? []) {
                 if (superset.trainingVideoId) {
-                    supersetVideoIds.add(superset.trainingVideoId);
+                    relatedVideoIds.add(superset.trainingVideoId);
                 }
             }
             for (const ev of (item as any).extraVideos ?? []) {
                 if (ev.trainingVideoId) {
-                    supersetVideoIds.add(ev.trainingVideoId);
+                    relatedVideoIds.add(ev.trainingVideoId);
+                }
+            }
+            for (const circuitItem of (item as any).circuitItems ?? []) {
+                if (circuitItem.trainingVideoId) {
+                    relatedVideoIds.add(circuitItem.trainingVideoId);
                 }
             }
 
@@ -161,7 +167,7 @@ async function serializeTrainingPlan(
         });
     }
 
-    const supersetVideosMap = await TrainingVideoService.ensureVideosExist(Array.from(supersetVideoIds));
+    const relatedVideosMap = await TrainingVideoService.ensureVideosExist(Array.from(relatedVideoIds));
 
     const weeks = Array.from(weeksMap.values())
         .sort((a, b) => a.weekNumber - b.weekNumber)
@@ -191,15 +197,23 @@ async function serializeTrainingPlan(
                     itemType: (item as any).itemType ?? (item.isSuperset ? 'SUPERSET' : 'REGULAR'),
                     isDone: item.isDone,
                     excerciceMetadata: item.excerciceMetadata,
-                    trainingVideo: serializeVideo(item.trainingVideo),
+                    trainingVideo: (item as any).itemType === 'CIRCUIT' && Array.isArray((item as any).circuitItems) && (item as any).circuitItems.length > 0
+                        ? null
+                        : serializeVideo(item.trainingVideo),
                     supersetItems: item.supersetItems.map((superset) => ({
                         trainingVideoId: superset.trainingVideoId,
                         sets: superset.sets,
                         repeats: superset.repeats,
-                        trainingVideo: serializeVideo(supersetVideosMap.get(superset.trainingVideoId)),
+                        trainingVideo: serializeVideo(relatedVideosMap.get(superset.trainingVideoId)),
                     })),
                     extraVideos: ((item as any).extraVideos ?? []).map((ev: any) => ({
-                        trainingVideo: serializeVideo(supersetVideosMap.get(ev.trainingVideoId)),
+                        trainingVideo: serializeVideo(relatedVideosMap.get(ev.trainingVideoId)),
+                    })),
+                    circuitItems: ((item as any).circuitItems ?? []).map((circuitItem: any) => ({
+                        trainingVideoId: circuitItem.trainingVideoId,
+                        sets: circuitItem.sets,
+                        repeats: circuitItem.repeats,
+                        trainingVideo: serializeVideo(relatedVideosMap.get(circuitItem.trainingVideoId)),
                     })),
                     dropsetConfig: (item as any).dropsetConfig ?? null,
                     circuitGroup: (item as any).circuitGroup ?? null,
@@ -360,6 +374,7 @@ interface RawTrainingPlanItem {
     excerciceMetadata: SerializedExcerciceMetadata | null;
     trainingVideo?: TrainingVideoEntity;
     supersetItems: Array<{ trainingVideoId: string; sets: number; repeats: number }>;
+    circuitItems?: Array<{ trainingVideoId: string; sets: number; repeats: number }>;
 }
 
 interface WeekAccumulator {
@@ -389,7 +404,7 @@ async function buildTrackingMap(
 async function processDays(
     days: any[],
     trackingMap: Map<string, DailyTrackingEntity>,
-    supersetVideoIds: Set<string>,
+    relatedVideoIds: Set<string>,
 ) {
     const processedDays = [];
 
@@ -403,12 +418,17 @@ async function processDays(
         const items = (day.items ?? []).map((item: any) => {
             for (const superset of item.supersetItems ?? []) {
                 if (superset.trainingVideoId) {
-                    supersetVideoIds.add(superset.trainingVideoId);
+                    relatedVideoIds.add(superset.trainingVideoId);
                 }
             }
             for (const ev of (item as any).extraVideos ?? []) {
                 if (ev.trainingVideoId) {
-                    supersetVideoIds.add(ev.trainingVideoId);
+                    relatedVideoIds.add(ev.trainingVideoId);
+                }
+            }
+            for (const circuitItem of (item as any).circuitItems ?? []) {
+                if (circuitItem.trainingVideoId) {
+                    relatedVideoIds.add(circuitItem.trainingVideoId);
                 }
             }
 
@@ -431,6 +451,7 @@ async function processDays(
                 itemType: item.itemType ?? (item.isSuperset ? 'SUPERSET' : 'REGULAR'),
                 trainingVideo: item.trainingVideo,
                 supersetItems: item.supersetItems ?? [],
+                circuitItems: item.circuitItems ?? [],
                 extraVideos: item.extraVideos ?? [],
                 dropsetConfig: item.dropsetConfig ?? null,
                 circuitGroup: item.circuitGroup ?? null,
@@ -448,7 +469,7 @@ async function processDays(
     }
 
     // Populate superset videos
-    const supersetVideosMap = await TrainingVideoService.ensureVideosExist(Array.from(supersetVideoIds));
+    const relatedVideosMap = await TrainingVideoService.ensureVideosExist(Array.from(relatedVideoIds));
 
     // Serialize videos in items
     for (const day of processedDays) {
@@ -461,15 +482,23 @@ async function processDays(
             itemType: item.itemType,
             isDone: item.isDone,
             excerciceMetadata: item.excerciceMetadata,
-            trainingVideo: serializeVideo(item.trainingVideo),
+            trainingVideo: item.itemType === 'CIRCUIT' && Array.isArray(item.circuitItems) && item.circuitItems.length > 0
+                ? null
+                : serializeVideo(item.trainingVideo),
             supersetItems: item.supersetItems.map((superset: any) => ({
                 trainingVideoId: superset.trainingVideoId,
                 sets: superset.sets,
                 repeats: superset.repeats,
-                trainingVideo: serializeVideo(supersetVideosMap.get(superset.trainingVideoId)),
+                trainingVideo: serializeVideo(relatedVideosMap.get(superset.trainingVideoId)),
             })),
             extraVideos: item.extraVideos.map((ev: any) => ({
-                trainingVideo: serializeVideo(supersetVideosMap.get(ev.trainingVideoId)),
+                trainingVideo: serializeVideo(relatedVideosMap.get(ev.trainingVideoId)),
+            })),
+            circuitItems: item.circuitItems.map((circuitItem: any) => ({
+                trainingVideoId: circuitItem.trainingVideoId,
+                sets: circuitItem.sets,
+                repeats: circuitItem.repeats,
+                trainingVideo: serializeVideo(relatedVideosMap.get(circuitItem.trainingVideoId)),
             })),
             dropsetConfig: item.dropsetConfig,
             circuitGroup: item.circuitGroup,

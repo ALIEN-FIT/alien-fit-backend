@@ -43,6 +43,7 @@ export class TrainingPlanItemEntity extends Model {
     declare itemType: TrainingPlanItemType;
     declare extraVideos: Array<Record<string, unknown>> | null;
     declare dropsetConfig: Record<string, unknown> | null;
+    declare circuitItems: Array<Record<string, unknown>> | null;
     declare circuitGroup: string | null;
 
     declare readonly createdAt: Date;
@@ -193,6 +194,10 @@ TrainingPlanItemEntity.init(
             allowNull: true,
         },
         dropsetConfig: {
+            type: DataTypes.JSONB,
+            allowNull: true,
+        },
+        circuitItems: {
             type: DataTypes.JSONB,
             allowNull: true,
         },

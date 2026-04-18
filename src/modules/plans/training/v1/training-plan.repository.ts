@@ -89,6 +89,7 @@ export class TrainingPlanRepository {
                 itemType: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
                 extraVideos: Array<Record<string, unknown>> | null;
                 dropsetConfig: Record<string, unknown> | null;
+                circuitItems: Array<Record<string, unknown>> | null;
                 circuitGroup: string | null;
             }>;
         }>,
@@ -123,6 +124,7 @@ export class TrainingPlanRepository {
                     itemType: item.itemType,
                     extraVideos: item.extraVideos,
                     dropsetConfig: item.dropsetConfig,
+                    circuitItems: item.circuitItems,
                     circuitGroup: item.circuitGroup,
                     dayId: planDay.id,
                 }));
@@ -155,6 +157,7 @@ export class TrainingPlanRepository {
                 itemType: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
                 extraVideos: Array<Record<string, unknown>> | null;
                 dropsetConfig: Record<string, unknown> | null;
+                circuitItems: Array<Record<string, unknown>> | null;
                 circuitGroup: string | null;
             }>;
         }>,
@@ -189,6 +192,7 @@ export class TrainingPlanRepository {
                     itemType: item.itemType,
                     extraVideos: item.extraVideos,
                     dropsetConfig: item.dropsetConfig,
+                    circuitItems: item.circuitItems,
                     circuitGroup: item.circuitGroup,
                     dayId: planDay.id,
                 }));

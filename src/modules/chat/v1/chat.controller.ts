@@ -194,6 +194,96 @@ export async function sendMessageAsTrainerController(req: Request, res: Response
     });
 }
 
+export async function updateMyMessageController(req: Request, res: Response): Promise<void> {
+    const userId = req.user!.id.toString();
+    const { messageId } = req.params;
+    const { content, mediaIds, parentMessageId } = req.body;
+
+    const { message } = await ChatService.updateMessage({
+        userId,
+        messageId,
+        actorId: userId,
+        actorRole: Roles.USER as SenderRole,
+        ...('content' in req.body ? { content } : {}),
+        ...('mediaIds' in req.body ? { mediaIds } : {}),
+        ...('parentMessageId' in req.body ? { parentMessageId } : {}),
+    });
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: mapMessageForUserViewer(message, userId),
+    });
+}
+
+export async function updateUserMessageController(req: Request, res: Response): Promise<void> {
+    const { userId, messageId } = req.params;
+    const { content, mediaIds, parentMessageId } = req.body;
+
+    const { message } = await ChatService.updateMessage({
+        userId,
+        messageId,
+        actorId: req.user!.id.toString(),
+        actorRole: req.user!.role as SenderRole,
+        ...('content' in req.body ? { content } : {}),
+        ...('mediaIds' in req.body ? { mediaIds } : {}),
+        ...('parentMessageId' in req.body ? { parentMessageId } : {}),
+    });
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: mapMessageForTrainerViewer(message),
+    });
+}
+
+export async function deleteMyMessageController(req: Request, res: Response): Promise<void> {
+    const userId = req.user!.id.toString();
+    const { messageId } = req.params;
+    const result = await ChatService.deleteMessage({
+        userId,
+        messageId,
+        actorId: userId,
+        actorRole: Roles.USER as SenderRole,
+    });
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: {
+            deleted: true,
+            userId,
+            chatId: result.chatId,
+            messageId: result.messageId,
+            isDeleted: true,
+            deletedAt: result.deletedAt,
+            deletedById: result.deletedById,
+            deletedByRole: result.deletedByRole,
+        },
+    });
+}
+
+export async function deleteUserMessageController(req: Request, res: Response): Promise<void> {
+    const { userId, messageId } = req.params;
+    const result = await ChatService.deleteMessage({
+        userId,
+        messageId,
+        actorId: req.user!.id.toString(),
+        actorRole: req.user!.role as SenderRole,
+    });
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: {
+            deleted: true,
+            userId,
+            chatId: result.chatId,
+            messageId: result.messageId,
+            isDeleted: true,
+            deletedAt: result.deletedAt,
+            deletedById: result.deletedById,
+            deletedByRole: result.deletedByRole,
+        },
+    });
+}
+
 export async function getOnlineUsersCountController(req: Request, res: Response): Promise<void> {
     const count = await PresenceService.countOnlineUsers();
     res.status(StatusCodes.OK).json({
@@ -223,13 +313,17 @@ function mapMessageForUserViewer(message: MessageEntity, viewerId: string) {
         parentMessageId: reply?.id ?? null,
         parentMessagePreview: reply?.preview ?? null,
         reply,
-        content: message.content ?? '',
+        content: message.isDeleted ? '' : (message.content ?? ''),
         messageType: message.messageType,
         media: formatMessageMedia(message),
         createdAt: message.createdAt,
         senderType,
         isMine,
         isRead: message.isRead,
+        isDeleted: message.isDeleted,
+        deletedAt: message.deletedAt ?? null,
+        deletedById: message.deletedById ?? null,
+        deletedByRole: message.deletedByRole ?? null,
     };
 }
 
@@ -245,10 +339,14 @@ function mapMessageForTrainerViewer(message: MessageEntity) {
         parentMessagePreview: reply?.preview ?? null,
         reply,
         messageType: message.messageType,
-        content: message.content ?? '',
+        content: message.isDeleted ? '' : (message.content ?? ''),
         media: formatMessageMedia(message),
         createdAt: message.createdAt,
         isRead: message.isRead,
+        isDeleted: message.isDeleted,
+        deletedAt: message.deletedAt ?? null,
+        deletedById: message.deletedById ?? null,
+        deletedByRole: message.deletedByRole ?? null,
     };
 }
 
@@ -284,6 +382,10 @@ function mapChatUser(user: unknown) {
 }
 
 function formatMessageMedia(message: MessageEntity) {
+    if (message.isDeleted) {
+        return [];
+    }
+
     const media = message.get('media') as unknown;
     if (!Array.isArray(media)) {
         return [];
@@ -318,11 +420,15 @@ function formatLastChatMessage(message?: MessageEntity | null) {
         senderRole: message.senderRole,
         parentMessageId: message.parentMessageId ?? null,
         messageType: message.messageType,
-        content: message.content ?? '',
+        content: message.isDeleted ? '' : (message.content ?? ''),
         createdAt: message.createdAt,
         mediaType: mediaTypes[0] ?? null,
         mediaTypes,
         hasMedia: media.length > 0,
+        isDeleted: message.isDeleted,
+        deletedAt: message.deletedAt ?? null,
+        deletedById: message.deletedById ?? null,
+        deletedByRole: message.deletedByRole ?? null,
     };
 }
 
@@ -374,6 +480,10 @@ function getParentMessage(message: MessageEntity): MessageEntity | null {
 }
 
 function buildReplyPreview(message: MessageEntity): string {
+    if (message.isDeleted) {
+        return 'Message deleted';
+    }
+
     const content = (message.content ?? '').trim();
     if (content) {
         return content.slice(0, 30);

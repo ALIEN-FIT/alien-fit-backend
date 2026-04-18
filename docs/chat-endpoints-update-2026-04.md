@@ -220,7 +220,179 @@ Socket emitted messages now also include:
 - `parentMessagePreview`
 - `reply`
 
-## 5) Database migration required
+## 5) Chat messages can be updated and soft-deleted
+
+Users can update or soft-delete their own messages.
+Admins can still update or soft-delete any message in a user chat.
+
+### REST: user updates own message
+
+```http
+PATCH /api/v1/chat/me/messages/:messageId
+Authorization: Bearer <user-token>
+```
+
+### REST: user soft-deletes own message
+
+```http
+DELETE /api/v1/chat/me/messages/:messageId
+Authorization: Bearer <user-token>
+```
+
+### REST: update a message
+
+```http
+PATCH /api/v1/chat/users/:userId/messages/:messageId
+Authorization: Bearer <admin-token>
+```
+
+Request body example:
+
+```json
+{
+  "content": "Updated by admin",
+  "parentMessageId": null
+}
+```
+
+You can also send:
+- `content`
+- `mediaIds`
+- `parentMessageId`
+
+Rules:
+- At least one of `content`, `mediaIds`, or `parentMessageId` must be provided.
+- Final message must still contain text or media.
+- `parentMessageId` must point to a message in the same chat.
+
+### REST: delete a message
+
+```http
+DELETE /api/v1/chat/users/:userId/messages/:messageId
+Authorization: Bearer <admin-token>
+```
+
+Response example:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "deleted": true,
+    "userId": "f5d1b2c6-5f3f-403a-a84b-12e42054d8fd",
+    "chatId": "c7ab1e62-2a85-49f5-a1b7-744b7b0cf2d0",
+    "messageId": "5a71fa8f-f34d-4f79-a56c-c0e168e00d69",
+    "isDeleted": true,
+    "deletedAt": "2026-04-18T13:00:00.000Z",
+    "deletedById": "a1b2c3d4-e5f6-47a8-9abc-1234567890ab",
+    "deletedByRole": "admin"
+  }
+}
+```
+
+Soft-delete behavior:
+- The message row remains in the database.
+- Deleted messages no longer contribute to unread counts.
+- Deleted messages return `isDeleted: true` and hide text/media content in API and socket payloads.
+- Reply previews for deleted parent messages return `Message deleted`.
+
+### Socket.IO: update a message
+
+User emit:
+
+```text
+chat:update
+```
+
+Payload example:
+
+```json
+{
+  "messageId": "5a71fa8f-f34d-4f79-a56c-c0e168e00d69",
+  "content": "Updated by user"
+}
+```
+
+Admin emit:
+
+```text
+chat:update
+```
+
+Payload example:
+
+```json
+{
+  "userId": "f5d1b2c6-5f3f-403a-a84b-12e42054d8fd",
+  "messageId": "5a71fa8f-f34d-4f79-a56c-c0e168e00d69",
+  "content": "Updated by admin"
+}
+```
+
+Broadcast event:
+
+```text
+chat:message-updated
+```
+
+### Socket.IO: delete a message
+
+User emit:
+
+```text
+chat:delete
+```
+
+Payload example:
+
+```json
+{
+  "messageId": "5a71fa8f-f34d-4f79-a56c-c0e168e00d69"
+}
+```
+
+Admin emit:
+
+```text
+chat:delete
+```
+
+Payload example:
+
+```json
+{
+  "userId": "f5d1b2c6-5f3f-403a-a84b-12e42054d8fd",
+  "messageId": "5a71fa8f-f34d-4f79-a56c-c0e168e00d69"
+}
+```
+
+Broadcast event:
+
+```text
+chat:message-deleted
+```
+
+Broadcast payload example:
+
+```json
+{
+  "id": "5a71fa8f-f34d-4f79-a56c-c0e168e00d69",
+  "messageId": "5a71fa8f-f34d-4f79-a56c-c0e168e00d69",
+  "chatId": "c7ab1e62-2a85-49f5-a1b7-744b7b0cf2d0",
+  "userId": "f5d1b2c6-5f3f-403a-a84b-12e42054d8fd",
+  "isDeleted": true,
+  "deletedAt": "2026-04-18T13:00:00.000Z",
+  "deletedById": "admin-user-id",
+  "deletedByRole": "admin"
+}
+```
+
+Notes:
+- Users can update/delete only their own messages.
+- Admins can update/delete any message in the target user chat.
+- Chat preview and last message summary are recalculated automatically when a message is updated or deleted.
+
+## 6) Database migration required
 
 Reply support adds a nullable `parentMessageId` column to `messages`.
 

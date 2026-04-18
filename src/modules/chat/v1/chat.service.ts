@@ -1,4 +1,4 @@
-import { FindAndCountOptions, Op, QueryTypes, fn } from 'sequelize';
+import { FindAndCountOptions, Op, QueryTypes, Transaction, fn } from 'sequelize';
 import { ChatEntity } from './entity/chat.entity.js';
 import { MessageEntity, MessageType, SenderRole } from './entity/message.entity.js';
 import './entity/associate-models.js';
@@ -41,6 +41,23 @@ export interface SendMessagePayload {
     messageType?: MessageType;
 }
 
+export interface UpdateMessagePayload {
+    userId: string;
+    messageId: string;
+    actorId: string;
+    actorRole: SenderRole;
+    content?: string | null;
+    mediaIds?: string[] | null;
+    parentMessageId?: string | null;
+}
+
+export interface DeleteMessagePayload {
+    userId: string;
+    messageId: string;
+    actorId: string;
+    actorRole: SenderRole;
+}
+
 const MESSAGE_MEDIA_INCLUDE = {
     model: MediaEntity,
     as: 'media',
@@ -50,7 +67,7 @@ const MESSAGE_MEDIA_INCLUDE = {
 const MESSAGE_PARENT_INCLUDE = {
     model: MessageEntity,
     as: 'parentMessage',
-    attributes: ['id', 'content', 'messageType', 'parentMessageId', 'createdAt'],
+    attributes: ['id', 'content', 'messageType', 'parentMessageId', 'createdAt', 'isDeleted', 'deletedAt'],
     include: [MESSAGE_MEDIA_INCLUDE],
 };
 
@@ -145,6 +162,119 @@ export class ChatService {
         return this.getMessagesForChat(chat.id, options);
     }
 
+    static async updateMessage(payload: UpdateMessagePayload): Promise<{ chat: ChatEntity; message: MessageEntity; }> {
+        const chat = await getChatByUserIdOrThrow(payload.userId);
+        const message = await getMessageForChatOrThrow(chat.id, payload.messageId);
+        assertMessageMutationAllowed(message, payload.actorId, payload.actorRole);
+        ensureMessageIsNotDeleted(message);
+
+        const hasContentField = hasOwnField(payload, 'content');
+        const hasMediaIdsField = hasOwnField(payload, 'mediaIds');
+        const hasParentMessageIdField = hasOwnField(payload, 'parentMessageId');
+
+        const nextContent = hasContentField
+            ? normalizeMessageContent(payload.content)
+            : (message.content ?? '');
+        const nextMediaIds = hasMediaIdsField
+            ? sanitizeMediaIds(payload.mediaIds)
+            : await getMessageMediaIds(message.id);
+        const nextParentMessageId = hasParentMessageIdField
+            ? normalizeParentMessageId(payload.parentMessageId)
+            : (message.parentMessageId ?? null);
+
+        if (nextParentMessageId === message.id) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Message cannot reply to itself');
+        }
+
+        if (!nextContent && !nextMediaIds.length) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Message must include content or media');
+        }
+
+        if (hasMediaIdsField && nextMediaIds.length) {
+            await assertAllMediaExist(nextMediaIds);
+        }
+
+        if (nextParentMessageId) {
+            await assertParentMessageBelongsToChat(nextParentMessageId, chat.id, message.id);
+        }
+
+        const transaction = await sequelize.transaction();
+        try {
+            await message.update({
+                ...(hasContentField ? { content: nextContent } : {}),
+                ...(hasParentMessageIdField ? { parentMessageId: nextParentMessageId } : {}),
+            }, { transaction });
+
+            if (hasMediaIdsField) {
+                await MessageMediaEntity.destroy({
+                    where: { messageId: message.id },
+                    transaction,
+                });
+
+                if (nextMediaIds.length) {
+                    await MessageMediaEntity.bulkCreate(
+                        nextMediaIds.map((mediaId, index) => ({
+                            messageId: message.id,
+                            mediaId,
+                            sortOrder: index,
+                        })),
+                        { transaction },
+                    );
+                }
+            }
+
+            await refreshChatSummary(chat.id, transaction);
+
+            await transaction.commit();
+            await message.reload({ include: [MESSAGE_MEDIA_INCLUDE, MESSAGE_PARENT_INCLUDE] });
+
+            return { chat, message };
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+    }
+
+    static async deleteMessage(payload: DeleteMessagePayload): Promise<{
+        chatId: string;
+        messageId: string;
+        deletedAt: Date;
+        deletedById: string;
+        deletedByRole: SenderRole;
+    }> {
+        const chat = await getChatByUserIdOrThrow(payload.userId);
+        const message = await getMessageForChatOrThrow(chat.id, payload.messageId);
+        assertMessageMutationAllowed(message, payload.actorId, payload.actorRole);
+        ensureMessageIsNotDeleted(message);
+
+        const transaction = await sequelize.transaction();
+        try {
+            const deletedAt = new Date();
+            await message.update({
+                content: '',
+                isRead: true,
+                isDeleted: true,
+                deletedAt,
+                deletedById: payload.actorId,
+                deletedByRole: payload.actorRole,
+                parentMessageId: null,
+            }, { transaction });
+            await refreshChatSummary(chat.id, transaction);
+            await transaction.commit();
+
+            return {
+                chatId: chat.id,
+                messageId: message.id,
+                deletedAt,
+                deletedById: payload.actorId,
+                deletedByRole: payload.actorRole,
+            };
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+    }
+
     static async getMessagesForChat(chatId: string, options: PaginationOptions = {}): Promise<MessageEntity[]> {
         const { page = 1, limit = DEFAULT_PAGE_SIZE } = options;
         return MessageEntity.findAll({
@@ -165,6 +295,7 @@ export class ChatService {
                 chatId: chat.id,
                 senderRole: Roles.USER,
                 isRead: false,
+                isDeleted: false,
             },
         });
 
@@ -180,6 +311,7 @@ export class ChatService {
                 chatId: chat.id,
                 senderRole: { [Op.in]: [Roles.TRAINER, Roles.ADMIN] },
                 isRead: false,
+                isDeleted: false,
             },
         });
 
@@ -269,15 +401,63 @@ async function assertAllMediaExist(mediaIds: string[]) {
     }
 }
 
-async function assertParentMessageBelongsToChat(parentMessageId: string, chatId: string) {
+async function assertParentMessageBelongsToChat(parentMessageId: string, chatId: string, currentMessageId?: string) {
     const parentMessage = await MessageEntity.findByPk(parentMessageId);
 
     if (!parentMessage || parentMessage.chatId !== chatId) {
         throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Parent message was not found in this chat');
     }
+
+    if (parentMessage.isDeleted) {
+        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Deleted messages cannot be used as replies');
+    }
+
+    if (currentMessageId && parentMessage.id === currentMessageId) {
+        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Message cannot reply to itself');
+    }
 }
 
-function buildMessagePreview(content: string, mediaIds: string[]): string {
+async function getChatByUserIdOrThrow(userId: string): Promise<ChatEntity> {
+    const chat = await ChatEntity.findOne({ where: { userId } });
+    if (!chat) {
+        throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Chat not found');
+    }
+    return chat;
+}
+
+async function getMessageForChatOrThrow(chatId: string, messageId: string): Promise<MessageEntity> {
+    const message = await MessageEntity.findOne({
+        where: {
+            id: messageId,
+            chatId,
+        },
+    });
+
+    if (!message) {
+        throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Message not found');
+    }
+
+    return message;
+}
+
+async function getMessageMediaIds(messageId: string): Promise<string[]> {
+    const rows = await MessageMediaEntity.findAll({
+        where: { messageId },
+        attributes: ['mediaId'],
+        order: [['sortOrder', 'ASC']],
+        raw: true,
+    });
+
+    return rows
+        .map((row) => String((row as any).mediaId ?? ''))
+        .filter(Boolean);
+}
+
+function buildMessagePreview(content: string, mediaIds: string[], isDeleted = false): string {
+    if (isDeleted) {
+        return 'Message deleted';
+    }
+
     if (content) {
         return content.substring(0, 280);
     }
@@ -293,12 +473,45 @@ function buildMessagePreview(content: string, mediaIds: string[]): string {
     return '';
 }
 
+async function refreshChatSummary(chatId: string, transaction?: Transaction) {
+    const chat = await ChatEntity.findByPk(chatId, { transaction });
+    if (!chat) {
+        throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Chat not found');
+    }
+
+    const latestMessage = await MessageEntity.findOne({
+        where: { chatId },
+        order: [['createdAt', 'DESC'], ['id', 'DESC']],
+        include: [MESSAGE_MEDIA_INCLUDE],
+        transaction,
+    });
+
+    if (!latestMessage) {
+        await chat.update({
+            lastMessageAt: null,
+            lastMessagePreview: null,
+        }, { transaction });
+        return;
+    }
+
+    const media = latestMessage.get('media') as MediaEntity[] | undefined;
+    await chat.update({
+        lastMessageAt: latestMessage.createdAt,
+        lastMessagePreview: buildMessagePreview(
+            latestMessage.content ?? '',
+            Array.isArray(media) ? media.map((item) => item.id) : [],
+            Boolean(latestMessage.isDeleted),
+        ),
+    }, { transaction });
+}
+
 async function countUnreadMessages(chatId: string, senderRoles: SenderRole[]): Promise<number> {
     return MessageEntity.count({
         where: {
             chatId,
             senderRole: { [Op.in]: senderRoles },
             isRead: false,
+            isDeleted: false,
         },
     });
 }
@@ -317,6 +530,7 @@ async function getUnreadCountsForChats(chatIds: string[], senderRoles: SenderRol
             chatId: { [Op.in]: chatIds },
             senderRole: { [Op.in]: senderRoles },
             isRead: false,
+            isDeleted: false,
         },
         group: ['chatId'],
         raw: true,
@@ -437,6 +651,7 @@ async function getUnreadChatCounters(senderRoles: SenderRole[]): Promise<UnreadC
         where: {
             senderRole: { [Op.in]: senderRoles },
             isRead: false,
+            isDeleted: false,
         },
         group: ['chatId'],
         raw: true,
@@ -507,6 +722,26 @@ function getUserSubscription(user: UserEntity | undefined): SubscriptionEntity |
     }
 
     return (user.get('subscription') as SubscriptionEntity | null) ?? null;
+}
+
+function hasOwnField<T extends object>(value: T, key: keyof T): boolean {
+    return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function ensureMessageIsNotDeleted(message: MessageEntity) {
+    if (message.isDeleted) {
+        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Message is already deleted');
+    }
+}
+
+function assertMessageMutationAllowed(message: MessageEntity, actorId: string, actorRole: SenderRole) {
+    if (actorRole === Roles.ADMIN) {
+        return;
+    }
+
+    if (message.senderId !== actorId || message.senderRole !== actorRole) {
+        throw new HttpResponseError(StatusCodes.FORBIDDEN, 'You do not have permission to modify this message');
+    }
 }
 
 function hasValidSubscription(subscription: SubscriptionEntity | null): boolean {
