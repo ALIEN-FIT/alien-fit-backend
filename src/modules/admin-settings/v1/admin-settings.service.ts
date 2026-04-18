@@ -198,7 +198,18 @@ export class AdminSettingsService {
         const ids = new Set<string>();
         for (const day of days) {
             for (const item of day.items ?? []) {
-                ids.add(item.trainingVideoId);
+                if (item.itemType === 'CIRCUIT') {
+                    for (const circuitItem of item.circuitItems ?? []) {
+                        ids.add(circuitItem.trainingVideoId);
+                    }
+                    if (item.trainingVideoId) {
+                        ids.add(item.trainingVideoId);
+                    }
+                    continue;
+                }
+                if (item.trainingVideoId) {
+                    ids.add(item.trainingVideoId);
+                }
                 if (item.isSuperset || item.itemType === 'SUPERSET') {
                     for (const superset of item.supersetItems ?? []) {
                         ids.add(superset.trainingVideoId);
@@ -221,71 +232,60 @@ export class AdminSettingsService {
                 throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'dayNumber must be between 1 and 7');
             }
             const normalizedItems = day.items?.map((item) => this.normalizeTrainingItem(item, videoMap)) ?? [];
-            this.assertCircuitGroupsAreValid(normalizedItems);
             template[position] = normalizedItems;
         });
 
         return template;
     }
 
-    private static assertCircuitGroupsAreValid(items: NormalizedTrainingItem[]) {
-        const circuitGroups = new Map<string, number>();
-        for (const item of items) {
-            if (item.itemType !== 'CIRCUIT') {
-                continue;
-            }
-            const key = (item.circuitGroup ?? '').trim();
-            circuitGroups.set(key, (circuitGroups.get(key) ?? 0) + 1);
-        }
-        for (const [group, count] of circuitGroups.entries()) {
-            if (!group) {
-                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'CIRCUIT items must include circuitGroup');
-            }
-            if (count < 3) {
-                throw new HttpResponseError(
-                    StatusCodes.BAD_REQUEST,
-                    `CIRCUIT group "${group}" must include at least 3 exercises (received ${count})`,
-                );
-            }
-        }
-    }
-
     private static normalizeTrainingItem(item: TrainingItemInput, videoMap: Map<string, any>): NormalizedTrainingItem {
-        const video = videoMap.get(item.trainingVideoId);
-        if (!video) {
-            throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${item.trainingVideoId}`);
-        }
-
         const itemType = item.itemType ?? (item.isSuperset ? 'SUPERSET' : 'REGULAR');
 
         if (!['REGULAR', 'SUPERSET', 'DROPSET', 'CIRCUIT'].includes(itemType)) {
             throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Invalid itemType: ${String(itemType)}`);
         }
 
-        if (!Number.isFinite(item.sets) || item.sets < 1) {
-            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'sets must be a positive number');
-        }
-        if (!Number.isFinite(item.repeats) || item.repeats < 1) {
-            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'repeats must be a positive number');
-        }
-
         let supersetItems: SupersetItemInput[] | null = null;
         let extraVideos: Array<{ trainingVideoId: string }> | null = null;
         let dropsetConfig: { dropPercents: number[]; restSeconds?: number } | null = null;
+        let circuitItems: CircuitItemInput[] | null = null;
         let circuitGroup: string | null = null;
+        let trainingVideoId: string;
+        let sets: number;
+        let repeats: number;
+
+        const resolveVideo = (videoId: string) => {
+            const video = videoMap.get(videoId);
+            if (!video) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${videoId}`);
+            }
+            return video;
+        };
 
         if (itemType === 'SUPERSET') {
+            if (!item.trainingVideoId) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'SUPERSET must include trainingVideoId');
+            }
+            if (!Number.isFinite(item.sets) || item.sets < 1) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'sets must be a positive number');
+            }
+            if (!Number.isFinite(item.repeats) || item.repeats < 1) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'repeats must be a positive number');
+            }
+            if (item.circuitItems?.length) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'SUPERSET cannot include circuitItems');
+            }
             if (!Array.isArray(item.supersetItems) || item.supersetItems.length < 1) {
                 throw new HttpResponseError(
                     StatusCodes.BAD_REQUEST,
                     'SUPERSET must include at least 2 exercises (provide supersetItems with length >= 1)',
                 );
             }
+            trainingVideoId = item.trainingVideoId;
+            sets = item.sets;
+            repeats = item.repeats;
             supersetItems = (item.supersetItems ?? []).map((superset) => {
-                const supersetVideo = videoMap.get(superset.trainingVideoId);
-                if (!supersetVideo) {
-                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${superset.trainingVideoId}`);
-                }
+                resolveVideo(superset.trainingVideoId);
                 if (!Number.isFinite(superset.sets) || superset.sets < 1) {
                     throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'supersetItem.sets must be a positive number');
                 }
@@ -299,13 +299,22 @@ export class AdminSettingsService {
                 };
             });
             extraVideos = (item.extraVideos ?? []).map((ev) => {
-                const evVideo = videoMap.get(ev.trainingVideoId);
-                if (!evVideo) {
-                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, `Unknown training video: ${ev.trainingVideoId}`);
-                }
+                resolveVideo(ev.trainingVideoId);
                 return { trainingVideoId: ev.trainingVideoId };
             });
         } else if (itemType === 'DROPSET') {
+            if (!item.trainingVideoId) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'DROPSET must include trainingVideoId');
+            }
+            if (!Number.isFinite(item.sets) || item.sets < 1) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'sets must be a positive number');
+            }
+            if (!Number.isFinite(item.repeats) || item.repeats < 1) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'repeats must be a positive number');
+            }
+            if (item.circuitItems?.length) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'DROPSET cannot include circuitItems');
+            }
             if (item.supersetItems?.length || item.extraVideos?.length) {
                 throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'DROPSET cannot include supersetItems or extraVideos');
             }
@@ -325,6 +334,9 @@ export class AdminSettingsService {
             ) {
                 throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'dropsetConfig.restSeconds must be a non-negative number');
             }
+            trainingVideoId = item.trainingVideoId;
+            sets = item.sets;
+            repeats = item.repeats;
             dropsetConfig = { dropPercents, restSeconds: item.dropsetConfig.restSeconds };
         } else if (itemType === 'CIRCUIT') {
             if (item.supersetItems?.length || item.extraVideos?.length) {
@@ -333,12 +345,59 @@ export class AdminSettingsService {
             if (item.dropsetConfig) {
                 throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'CIRCUIT cannot include dropsetConfig');
             }
-            circuitGroup = (item.circuitGroup ?? '').trim() || null;
-            if (!circuitGroup) {
-                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'CIRCUIT must include circuitGroup');
+            if (item.circuitItems?.length) {
+                if (item.circuitGroup) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'CIRCUIT cannot include circuitGroup when circuitItems are provided');
+                }
+                circuitItems = item.circuitItems.map((circuitItem) => {
+                    resolveVideo(circuitItem.trainingVideoId);
+                    if (!Number.isFinite(circuitItem.sets) || circuitItem.sets < 1) {
+                        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'circuitItem.sets must be a positive number');
+                    }
+                    if (!Number.isFinite(circuitItem.repeats) || circuitItem.repeats < 1) {
+                        throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'circuitItem.repeats must be a positive number');
+                    }
+                    return {
+                        trainingVideoId: circuitItem.trainingVideoId,
+                        sets: circuitItem.sets,
+                        repeats: circuitItem.repeats,
+                    };
+                });
+                trainingVideoId = circuitItems[0].trainingVideoId;
+                sets = circuitItems[0].sets;
+                repeats = circuitItems[0].repeats;
+            } else {
+                if (!item.trainingVideoId) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Legacy CIRCUIT items must include trainingVideoId');
+                }
+                if (!Number.isFinite(item.sets) || item.sets < 1) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'sets must be a positive number');
+                }
+                if (!Number.isFinite(item.repeats) || item.repeats < 1) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'repeats must be a positive number');
+                }
+                circuitGroup = (item.circuitGroup ?? '').trim() || null;
+                if (!circuitGroup) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Legacy CIRCUIT items must include circuitGroup');
+                }
+                trainingVideoId = item.trainingVideoId;
+                sets = item.sets;
+                repeats = item.repeats;
             }
         } else {
             // REGULAR
+            if (!item.trainingVideoId) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'REGULAR must include trainingVideoId');
+            }
+            if (!Number.isFinite(item.sets) || item.sets < 1) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'sets must be a positive number');
+            }
+            if (!Number.isFinite(item.repeats) || item.repeats < 1) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'repeats must be a positive number');
+            }
+            if (item.circuitItems?.length) {
+                throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'REGULAR cannot include circuitItems');
+            }
             if (item.supersetItems?.length || item.extraVideos?.length) {
                 throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'REGULAR cannot include supersetItems or extraVideos');
             }
@@ -348,15 +407,21 @@ export class AdminSettingsService {
             if (item.circuitGroup) {
                 throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'REGULAR cannot include circuitGroup');
             }
+            trainingVideoId = item.trainingVideoId;
+            sets = item.sets;
+            repeats = item.repeats;
         }
 
+        const trainingVideo = resolveVideo(trainingVideoId);
+
         return {
-            trainingVideoId: item.trainingVideoId,
-            sets: item.sets,
-            repeats: item.repeats,
+            trainingVideoId,
+            sets,
+            repeats,
             isSuperset: itemType === 'SUPERSET',
             supersetItems,
-            trainingVideo: video,
+            circuitItems,
+            trainingVideo,
             itemType,
             extraVideos,
             dropsetConfig,
@@ -384,6 +449,7 @@ export class AdminSettingsService {
                 supersetItems: item.isSuperset ? item.supersetItems ?? [] : null,
                 extraVideos: item.itemType === 'SUPERSET' ? item.extraVideos ?? [] : null,
                 dropsetConfig: item.itemType === 'DROPSET' ? item.dropsetConfig ?? null : null,
+                circuitItems: item.itemType === 'CIRCUIT' ? item.circuitItems ?? null : null,
                 circuitGroup: item.itemType === 'CIRCUIT' ? item.circuitGroup ?? null : null,
             }));
 
@@ -416,15 +482,22 @@ interface SupersetItemInput {
     repeats: number;
 }
 
-interface TrainingItemInput {
+interface CircuitItemInput {
     trainingVideoId: string;
     sets: number;
     repeats: number;
+}
+
+interface TrainingItemInput {
+    trainingVideoId?: string;
+    sets?: number;
+    repeats?: number;
     itemType?: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
     isSuperset?: boolean;
     supersetItems?: SupersetItemInput[];
     extraVideos?: Array<{ trainingVideoId: string }>;
     dropsetConfig?: { dropPercents: number[]; restSeconds?: number };
+    circuitItems?: CircuitItemInput[];
     circuitGroup?: string;
 }
 
@@ -444,6 +517,7 @@ interface NormalizedTrainingItem {
     repeats: number;
     isSuperset: boolean;
     supersetItems: SupersetItemInput[] | null;
+    circuitItems: CircuitItemInput[] | null;
     trainingVideo: any;
     itemType: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
     extraVideos: Array<{ trainingVideoId: string }> | null;

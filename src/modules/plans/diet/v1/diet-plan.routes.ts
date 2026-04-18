@@ -5,6 +5,7 @@ import { validateRequest } from '../../../../middleware/validation.middleware.js
 import {
     createDietPlanWeekController,
     getDietPlanController,
+    getDietPlanHistoryController,
     getMyDietPlanController,
     adminUpdateDietPlanDayController,
     adminClearDietPlanDayController,
@@ -37,9 +38,21 @@ dietPlanRouterV1.get(
 );
 
 dietPlanRouterV1.get(
+    '/me/history',
+    getDietPlanHistoryController,
+);
+
+dietPlanRouterV1.get(
     '/:userId',
     validateRequest(dietPlanUserParamSchema),
     getDietPlanController,
+);
+
+dietPlanRouterV1.get(
+    '/:userId/history',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(dietPlanUserParamSchema),
+    getDietPlanHistoryController,
 );
 
 dietPlanRouterV1.patch(

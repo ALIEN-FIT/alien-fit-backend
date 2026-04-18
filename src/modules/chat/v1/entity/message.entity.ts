@@ -13,9 +13,14 @@ export class MessageEntity extends Model {
     declare chatId: string;
     declare senderId: string;
     declare senderRole: SenderRole;
+    declare parentMessageId: string | null;
     declare messageType: MessageType;
     declare content: string | null;
     declare isRead: boolean;
+    declare isDeleted: boolean;
+    declare deletedAt: Date | null;
+    declare deletedById: string | null;
+    declare deletedByRole: SenderRole | null;
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
 }
@@ -39,6 +44,11 @@ MessageEntity.init(
             type: DataTypes.ENUM(...SenderRoles),
             allowNull: false,
         },
+        parentMessageId: {
+            type: DataTypes.UUID,
+            allowNull: true,
+            defaultValue: null,
+        },
         messageType: {
             type: DataTypes.ENUM(...MessageTypes),
             allowNull: false,
@@ -53,6 +63,25 @@ MessageEntity.init(
             type: DataTypes.BOOLEAN,
             allowNull: false,
             defaultValue: false,
+        },
+        isDeleted: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+        },
+        deletedAt: {
+            type: DataTypes.DATE,
+            allowNull: true,
+            defaultValue: null,
+        },
+        deletedById: {
+            type: DataTypes.UUID,
+            allowNull: true,
+        },
+        deletedByRole: {
+            type: DataTypes.ENUM(...SenderRoles),
+            allowNull: true,
+            defaultValue: null,
         },
     },
     {

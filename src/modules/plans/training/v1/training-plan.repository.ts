@@ -1,90 +1,69 @@
-import { Transaction } from 'sequelize';
 import { sequelize } from '../../../../database/db-config.js';
 import { TrainingPlanEntity, TrainingPlanDayEntity, TrainingPlanItemEntity } from './entity/training-plan.entity.js';
 import { TrainingVideoEntity, TrainingTagEntity } from '../../../training-video/v1/entity/training-video.entity.js';
 
 export class TrainingPlanRepository {
-    static findById(planId: string) {
-        return TrainingPlanEntity.findByPk(planId, {
+    private static readonly include = [
+        {
+            model: TrainingPlanDayEntity,
+            as: 'days',
             include: [
                 {
-                    model: TrainingPlanDayEntity,
-                    as: 'days',
+                    model: TrainingPlanItemEntity,
+                    as: 'items',
                     include: [
                         {
-                            model: TrainingPlanItemEntity,
-                            as: 'items',
+                            model: TrainingVideoEntity,
+                            as: 'trainingVideo',
                             include: [
                                 {
-                                    model: TrainingVideoEntity,
-                                    as: 'trainingVideo',
-                                    include: [
-                                        {
-                                            model: TrainingTagEntity,
-                                            as: 'tags',
-                                            through: { attributes: [] },
-                                        },
-                                    ],
+                                    model: TrainingTagEntity,
+                                    as: 'tags',
+                                    through: { attributes: [] },
                                 },
                             ],
                         },
                     ],
                 },
             ],
-            order: [
-                [{ model: TrainingPlanDayEntity, as: 'days' }, 'dayIndex', 'ASC'],
-                [
-                    { model: TrainingPlanDayEntity, as: 'days' },
-                    { model: TrainingPlanItemEntity, as: 'items' },
-                    'order',
-                    'ASC',
-                ],
+        },
+    ];
+
+    private static buildOrder() {
+        return [
+            ['createdAt', 'DESC'],
+            ['id', 'DESC'],
+            [{ model: TrainingPlanDayEntity, as: 'days' }, 'dayIndex', 'ASC'],
+            [
+                { model: TrainingPlanDayEntity, as: 'days' },
+                { model: TrainingPlanItemEntity, as: 'items' },
+                'order',
+                'ASC',
             ],
+        ];
+    }
+
+    static findById(planId: string) {
+        return TrainingPlanEntity.findByPk(planId, {
+            include: this.include,
+            order: this.buildOrder() as any,
         });
     }
 
     static findByUserId(userId: string) {
         return TrainingPlanEntity.findOne({
             where: { userId },
-            include: [
-                {
-                    model: TrainingPlanDayEntity,
-                    as: 'days',
-                    include: [
-                        {
-                            model: TrainingPlanItemEntity,
-                            as: 'items',
-                            include: [
-                                {
-                                    model: TrainingVideoEntity,
-                                    as: 'trainingVideo',
-                                    include: [
-                                        {
-                                            model: TrainingTagEntity,
-                                            as: 'tags',
-                                            through: { attributes: [] },
-                                        },
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-            order: [
-                [{ model: TrainingPlanDayEntity, as: 'days' }, 'dayIndex', 'ASC'],
-                [
-                    { model: TrainingPlanDayEntity, as: 'days' },
-                    { model: TrainingPlanItemEntity, as: 'items' },
-                    'order',
-                    'ASC',
-                ],
-            ],
+            include: this.include,
+            order: this.buildOrder() as any,
         });
     }
 
-    static async deleteExistingPlan(userId: string, transaction?: Transaction) {
-        await TrainingPlanEntity.destroy({ where: { userId }, transaction });
+    static listByUserId(userId: string) {
+        return TrainingPlanEntity.findAll({
+            where: { userId },
+            include: this.include,
+            order: this.buildOrder() as any,
+        });
     }
 
     static async createPlan(
@@ -110,13 +89,12 @@ export class TrainingPlanRepository {
                 itemType: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
                 extraVideos: Array<Record<string, unknown>> | null;
                 dropsetConfig: Record<string, unknown> | null;
+                circuitItems: Array<Record<string, unknown>> | null;
                 circuitGroup: string | null;
             }>;
         }>,
     ) {
         return sequelize.transaction(async (transaction) => {
-            await this.deleteExistingPlan(userId, transaction);
-
             const plan = await TrainingPlanEntity.create({ userId, startDate, endDate }, { transaction });
 
             for (const day of days) {
@@ -146,6 +124,7 @@ export class TrainingPlanRepository {
                     itemType: item.itemType,
                     extraVideos: item.extraVideos,
                     dropsetConfig: item.dropsetConfig,
+                    circuitItems: item.circuitItems,
                     circuitGroup: item.circuitGroup,
                     dayId: planDay.id,
                 }));
@@ -178,6 +157,7 @@ export class TrainingPlanRepository {
                 itemType: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
                 extraVideos: Array<Record<string, unknown>> | null;
                 dropsetConfig: Record<string, unknown> | null;
+                circuitItems: Array<Record<string, unknown>> | null;
                 circuitGroup: string | null;
             }>;
         }>,
@@ -212,6 +192,7 @@ export class TrainingPlanRepository {
                     itemType: item.itemType,
                     extraVideos: item.extraVideos,
                     dropsetConfig: item.dropsetConfig,
+                    circuitItems: item.circuitItems,
                     circuitGroup: item.circuitGroup,
                     dayId: planDay.id,
                 }));

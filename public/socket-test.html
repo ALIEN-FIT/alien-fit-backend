@@ -206,7 +206,7 @@
         <section>
             <h2>Emit Message</h2>
             <p style="margin:0; color:#cbd5f5; font-size:0.85rem;">As USER leave target user blank. Trainers/Admins must
-                supply the userId they are helping.</p>
+                supply the userId they are helping. The same applies to `chat:update` and `chat:delete`.</p>
             <div>
                 <label for="targetUserId">Target User ID</label>
                 <input id="targetUserId" type="text" placeholder="Required when acting as trainer/admin">
@@ -215,7 +215,19 @@
                 <label for="messageContent">Message</label>
                 <textarea id="messageContent" placeholder="Type chat message"></textarea>
             </div>
-            <button id="sendMessageBtn">Emit chat:send</button>
+            <div>
+                <label for="parentMessageId">Parent Message ID (optional)</label>
+                <input id="parentMessageId" type="text" placeholder="Reply to an existing message UUID">
+            </div>
+            <div>
+                <label for="editMessageId">Message ID For Update/Delete</label>
+                <input id="editMessageId" type="text" placeholder="Existing message UUID">
+            </div>
+            <div class="button-group">
+                <button id="sendMessageBtn">Emit chat:send</button>
+                <button id="updateMessageBtn" class="secondary">Emit chat:update</button>
+                <button id="deleteMessageBtn" class="secondary">Emit chat:delete</button>
+            </div>
         </section>
 
         <section id="callSection">

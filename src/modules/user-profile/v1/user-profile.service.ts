@@ -48,11 +48,49 @@ async function assertMediaExistsIfProvided(mediaId: string | null | undefined, l
 
 export class UserProfileService {
   static async getUserProfile(userId: string | number): Promise<UserProfileEntity> {
-    const profile = await UserProfileEntity.findOne({ where: { userId } });
+    const profile = await UserProfileEntity.findOne({
+      where: { userId },
+      order: [['createdAt', 'DESC'], ['id', 'DESC']],
+    });
     if (!profile) {
       throw new HttpResponseError(StatusCodes.NOT_FOUND, 'User profile not found');
     }
     return profile;
+  }
+
+  static async getUserProfileHistory(userId: string | number): Promise<UserProfileEntity[]> {
+    return UserProfileEntity.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC'], ['id', 'DESC']],
+    });
+  }
+
+  private static buildProfileSnapshot(
+    latestProfile: UserProfileEntity | null,
+    profileData: Partial<UserProfileEntity>,
+  ): Partial<UserProfileEntity> {
+    const latestJson = latestProfile?.toJSON() as Partial<UserProfileEntity> | undefined;
+    const payload: Partial<UserProfileEntity> = {
+      ...(latestJson ?? {}),
+      ...profileData,
+    };
+
+    delete (payload as any).id;
+    delete (payload as any).userId;
+    delete (payload as any).createdAt;
+    delete (payload as any).updatedAt;
+
+    const now = new Date();
+
+    if (profileData.bodyImages !== undefined) {
+      payload.bodyImagesUpdatedAt = Array.isArray(profileData.bodyImages) && profileData.bodyImages.length > 0 ? now : null;
+    }
+
+    if (profileData.inbodyImage !== undefined) {
+      payload.inbodyImageUpdatedAt = profileData.inbodyImage ? now : null;
+    }
+
+    return payload;
   }
 
   static async createOrUpdateUserProfile(
@@ -63,17 +101,6 @@ export class UserProfileService {
     await UserService.getUserById(userId);
     await assertBodyImagesExistIfProvided(profileData.bodyImages);
     await assertMediaExistsIfProvided(profileData.inbodyImage as string | null | undefined, 'inbodyImage');
-
-    const payload: Partial<UserProfileEntity> = { ...profileData };
-    const now = new Date();
-
-    if (profileData.bodyImages !== undefined) {
-      payload.bodyImagesUpdatedAt = Array.isArray(profileData.bodyImages) && profileData.bodyImages.length > 0 ? now : null;
-    }
-
-    if (profileData.inbodyImage !== undefined) {
-      payload.inbodyImageUpdatedAt = profileData.inbodyImage ? now : null;
-    }
 
     const isAdmin = actor.role === Roles.ADMIN;
     const isSelfUpdate = actor.id === userId;
@@ -92,16 +119,15 @@ export class UserProfileService {
       }
     }
 
-    let profile = await UserProfileEntity.findOne({ where: { userId } });
-
-    if (profile) {
-      await profile.update(payload);
-    } else {
-      profile = await UserProfileEntity.create({
-        userId,
-        ...payload,
-      });
-    }
+    const latestProfile = await UserProfileEntity.findOne({
+      where: { userId },
+      order: [['createdAt', 'DESC'], ['id', 'DESC']],
+    });
+    const payload = this.buildProfileSnapshot(latestProfile, profileData);
+    const profile = await UserProfileEntity.create({
+      userId,
+      ...payload,
+    });
 
     const isProfileComplete = true;
 
@@ -112,21 +138,28 @@ export class UserProfileService {
 
     await SubscriptionService.recordProfileUpdate(userId);
 
-    const { request } = await PlanUpdateRequestService.ensurePendingProfileUpdateRequest(
-      userId,
-      payload ? { profileData: payload } : null
-    );
+    let requestId: string | undefined;
+    if (!isAdmin && isSelfUpdate) {
+      const { request } = await PlanUpdateRequestService.ensurePendingProfileUpdateRequest(
+        userId,
+        payload ? { profileData: payload } : null
+      );
+      requestId = request.id;
+    }
 
-    return { profile, isProfileComplete, action: 'updated', planUpdateRequestId: request.id };
+    return { profile, isProfileComplete, action: 'updated', planUpdateRequestId: requestId };
   }
 
   static async deleteUserProfile(userId: string | number): Promise<UserProfileEntity> {
-    const profile = await UserProfileEntity.findOne({ where: { userId } });
+    const profile = await UserProfileEntity.findOne({
+      where: { userId },
+      order: [['createdAt', 'DESC'], ['id', 'DESC']],
+    });
     if (!profile) {
       throw new HttpResponseError(StatusCodes.NOT_FOUND, 'User profile not found');
     }
 
-    await profile.destroy();
+    await UserProfileEntity.destroy({ where: { userId } });
 
     await UserEntity.update(
       { isProfileComplete: false },

@@ -18,7 +18,11 @@ const HEARTBEAT_EVENT = 'heartbeat';
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const HEARTBEAT_MAX_MISSES = 3;
 const SEND_MESSAGE_EVENT = 'chat:send';
+const UPDATE_MESSAGE_EVENT = 'chat:update';
+const DELETE_MESSAGE_EVENT = 'chat:delete';
 const MESSAGE_EVENT = 'chat:message';
+const MESSAGE_UPDATED_EVENT = 'chat:message-updated';
+const MESSAGE_DELETED_EVENT = 'chat:message-deleted';
 const USER_ROOM_PREFIX = 'chat:';
 const CALL_OFFER_EVENT = 'call:offer';
 const CALL_ANSWER_EVENT = 'call:answer';
@@ -151,7 +155,12 @@ export function initializeSocketServer(server: HTTPServer) {
 
         socket.on(SEND_MESSAGE_EVENT, async (payload, callback) => {
             try {
-                const { content, mediaIds, userId: targetUserId } = payload as { content?: string; mediaIds?: string[]; userId?: string };
+                const {
+                    content,
+                    mediaIds,
+                    parentMessageId,
+                    userId: targetUserId,
+                } = payload as { content?: string; mediaIds?: string[]; parentMessageId?: string | null; userId?: string };
                 const resolvedUserId = role === Roles.USER ? userId : targetUserId;
 
                 if (!resolvedUserId) {
@@ -165,6 +174,7 @@ export function initializeSocketServer(server: HTTPServer) {
                     senderRole,
                     content: content ?? '',
                     mediaIds,
+                    parentMessageId,
                 });
 
                 await PresenceService.heartbeat(userId);
@@ -206,6 +216,109 @@ export function initializeSocketServer(server: HTTPServer) {
                 if (callback) {
                     callback({ status: 'error', message: (error as Error).message });
                 }
+            }
+        });
+
+        socket.on(UPDATE_MESSAGE_EVENT, async (payload, callback) => {
+            try {
+                const rawPayload = (payload && typeof payload === 'object')
+                    ? payload as Record<string, unknown>
+                    : {};
+
+                const {
+                    userId: targetUserId,
+                    messageId,
+                    content,
+                    mediaIds,
+                    parentMessageId,
+                } = payload as {
+                    userId?: string;
+                    messageId?: string;
+                    content?: string | null;
+                    mediaIds?: string[] | null;
+                    parentMessageId?: string | null;
+                };
+
+                const resolvedUserId = role === Roles.USER ? userId : targetUserId;
+
+                if (!resolvedUserId) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Target userId is required');
+                }
+
+                if (!messageId) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'messageId is required');
+                }
+
+                const { message } = await ChatService.updateMessage({
+                    userId: resolvedUserId,
+                    messageId,
+                    actorId: userId,
+                    actorRole: role as SenderRole,
+                    ...(Object.prototype.hasOwnProperty.call(rawPayload, 'content') ? { content } : {}),
+                    ...(Object.prototype.hasOwnProperty.call(rawPayload, 'mediaIds') ? { mediaIds } : {}),
+                    ...(Object.prototype.hasOwnProperty.call(rawPayload, 'parentMessageId') ? { parentMessageId } : {}),
+                });
+
+                await PresenceService.heartbeat(userId);
+
+                const userMessage = mapMessageForUser(resolvedUserId, message);
+                const trainerMessage = mapMessageForTrainer(message);
+
+                io.to(getUserRoom(resolvedUserId)).emit(MESSAGE_UPDATED_EVENT, userMessage);
+                io.to(TRAINERS_ROOM).emit(MESSAGE_UPDATED_EVENT, trainerMessage);
+
+                callback?.({
+                    status: 'ok',
+                    message: role === Roles.USER ? userMessage : trainerMessage,
+                });
+            } catch (error) {
+                callback?.({ status: 'error', message: (error as Error).message });
+            }
+        });
+
+        socket.on(DELETE_MESSAGE_EVENT, async (payload, callback) => {
+            try {
+                const { userId: targetUserId, messageId } = payload as {
+                    userId?: string;
+                    messageId?: string;
+                };
+
+                const resolvedUserId = role === Roles.USER ? userId : targetUserId;
+
+                if (!resolvedUserId) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Target userId is required');
+                }
+
+                if (!messageId) {
+                    throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'messageId is required');
+                }
+
+                const deleted = await ChatService.deleteMessage({
+                    userId: resolvedUserId,
+                    messageId,
+                    actorId: userId,
+                    actorRole: role as SenderRole,
+                });
+
+                await PresenceService.heartbeat(userId);
+
+                const deletedPayload = {
+                    id: deleted.messageId,
+                    messageId: deleted.messageId,
+                    chatId: deleted.chatId,
+                    userId: resolvedUserId,
+                    isDeleted: true,
+                    deletedAt: deleted.deletedAt,
+                    deletedById: deleted.deletedById,
+                    deletedByRole: deleted.deletedByRole,
+                };
+
+                io.to(getUserRoom(resolvedUserId)).emit(MESSAGE_DELETED_EVENT, deletedPayload);
+                io.to(TRAINERS_ROOM).emit(MESSAGE_DELETED_EVENT, deletedPayload);
+
+                callback?.({ status: 'ok', data: deletedPayload });
+            } catch (error) {
+                callback?.({ status: 'error', message: (error as Error).message });
             }
         });
 
@@ -783,33 +896,53 @@ function getUserRoom(userId: string): string {
 function mapMessageForUser(viewerId: string, message: MessageEntity) {
     const senderType = message.senderRole === Roles.USER ? 'user' : 'trainer';
     const isMine = message.senderId === viewerId;
+    const reply = formatReplyMeta(message);
     return {
         id: message.id,
-        content: message.content ?? '',
+        parentMessageId: reply?.id ?? null,
+        parentMessagePreview: reply?.preview ?? null,
+        reply,
+        content: message.isDeleted ? '' : (message.content ?? ''),
         messageType: message.messageType,
         media: formatMessageMedia(message),
         createdAt: message.createdAt,
         senderType,
         isMine,
         isRead: message.isRead,
+        isDeleted: message.isDeleted,
+        deletedAt: message.deletedAt ?? null,
+        deletedById: message.deletedById ?? null,
+        deletedByRole: message.deletedByRole ?? null,
     };
 }
 
 function mapMessageForTrainer(message: MessageEntity) {
+    const reply = formatReplyMeta(message);
     return {
         id: message.id,
         chatId: message.chatId,
         senderId: message.senderId,
         senderRole: message.senderRole,
+        parentMessageId: reply?.id ?? null,
+        parentMessagePreview: reply?.preview ?? null,
+        reply,
         messageType: message.messageType,
-        content: message.content ?? '',
+        content: message.isDeleted ? '' : (message.content ?? ''),
         media: formatMessageMedia(message),
         createdAt: message.createdAt,
         isRead: message.isRead,
+        isDeleted: message.isDeleted,
+        deletedAt: message.deletedAt ?? null,
+        deletedById: message.deletedById ?? null,
+        deletedByRole: message.deletedByRole ?? null,
     };
 }
 
 function formatMessageMedia(message: MessageEntity) {
+    if (message.isDeleted) {
+        return [];
+    }
+
     const media = message.get('media') as unknown;
     if (!Array.isArray(media)) {
         return [];
@@ -823,6 +956,44 @@ function formatMessageMedia(message: MessageEntity) {
             return { ...rest, sortOrder };
         })
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+}
+
+function formatReplyMeta(message: MessageEntity) {
+    const parentMessage = getParentMessage(message);
+    if (!parentMessage) {
+        return null;
+    }
+
+    return {
+        id: parentMessage.id,
+        preview: buildReplyPreview(parentMessage),
+    };
+}
+
+function getParentMessage(message: MessageEntity): MessageEntity | null {
+    return (message.get('parentMessage') as MessageEntity | null) ?? null;
+}
+
+function buildReplyPreview(message: MessageEntity): string {
+    if (message.isDeleted) {
+        return 'Message deleted';
+    }
+
+    const content = (message.content ?? '').trim();
+    if (content) {
+        return content.slice(0, 30);
+    }
+
+    const media = formatMessageMedia(message);
+    if (media.length === 1) {
+        return '[Attachment]';
+    }
+
+    if (media.length > 1) {
+        return `[${media.length} attachments]`;
+    }
+
+    return '';
 }
 
 function startHeartbeatLoop(socket: Socket, userId: string) {

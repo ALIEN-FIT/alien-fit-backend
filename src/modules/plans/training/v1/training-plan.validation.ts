@@ -7,11 +7,29 @@ const supersetExerciseSchema = Joi.object({
     repeats: Joi.number().integer().positive().required(),
 }).unknown(false);
 
-const trainingPlanItemSchema = Joi.object({
-    trainingVideoId: JoiCustomValidateObjectId('Training video ID'),
+const circuitExerciseSchema = Joi.object({
+    trainingVideoId: JoiCustomValidateObjectId('Circuit training video ID'),
     sets: Joi.number().integer().positive().required(),
     repeats: Joi.number().integer().positive().required(),
+}).unknown(false);
+
+const trainingPlanItemSchema = Joi.object({
     itemType: Joi.string().valid('REGULAR', 'SUPERSET', 'DROPSET', 'CIRCUIT').default('REGULAR'),
+    trainingVideoId: Joi.alternatives().conditional('itemType', {
+        is: Joi.valid('CIRCUIT'),
+        then: Joi.forbidden(),
+        otherwise: JoiCustomValidateObjectId('Training video ID'),
+    }),
+    sets: Joi.alternatives().conditional('itemType', {
+        is: Joi.valid('CIRCUIT'),
+        then: Joi.forbidden(),
+        otherwise: Joi.number().integer().positive().required(),
+    }),
+    repeats: Joi.alternatives().conditional('itemType', {
+        is: Joi.valid('CIRCUIT'),
+        then: Joi.forbidden(),
+        otherwise: Joi.number().integer().positive().required(),
+    }),
     isSuperset: Joi.boolean().optional(),
     supersetItems: Joi.alternatives().conditional('itemType', {
         is: Joi.valid('SUPERSET'),
@@ -31,9 +49,14 @@ const trainingPlanItemSchema = Joi.object({
         }).required(),
         otherwise: Joi.forbidden(),
     }),
+    circuitItems: Joi.alternatives().conditional('itemType', {
+        is: Joi.valid('CIRCUIT'),
+        then: Joi.array().items(circuitExerciseSchema).min(1).required(),
+        otherwise: Joi.forbidden(),
+    }),
     circuitGroup: Joi.alternatives().conditional('itemType', {
         is: Joi.valid('CIRCUIT'),
-        then: Joi.string().min(1).required(),
+        then: Joi.forbidden(),
         otherwise: Joi.forbidden(),
     }),
 }).unknown(false);
@@ -81,6 +104,7 @@ export const updateTrainingPlanItemSchema = Joi.object({
         dropPercents: Joi.array().items(Joi.number().min(0).max(100)).min(1).required(),
         restSeconds: Joi.number().integer().min(0).optional(),
     }).optional(),
+    circuitItems: Joi.array().items(circuitExerciseSchema).min(1).optional(),
     circuitGroup: Joi.string().allow('').optional(),
     note: Joi.string().optional(),
 })

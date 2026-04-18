@@ -1,63 +1,55 @@
-import { Transaction } from 'sequelize';
 import { sequelize } from '../../../../database/db-config.js';
 import { DietPlanEntity, DietPlanDayEntity, DietMealItemEntity } from './entity/diet-plan.entity.js';
 
 export class DietPlanRepository {
-    static findById(planId: string) {
-        return DietPlanEntity.findByPk(planId, {
+    private static readonly include = [
+        {
+            model: DietPlanDayEntity,
+            as: 'days',
             include: [
                 {
-                    model: DietPlanDayEntity,
-                    as: 'days',
-                    include: [
-                        {
-                            model: DietMealItemEntity,
-                            as: 'meals',
-                        },
-                    ],
+                    model: DietMealItemEntity,
+                    as: 'meals',
                 },
             ],
-            order: [
-                [{ model: DietPlanDayEntity, as: 'days' }, 'dayIndex', 'ASC'],
-                [
-                    { model: DietPlanDayEntity, as: 'days' },
-                    { model: DietMealItemEntity, as: 'meals' },
-                    'order',
-                    'ASC',
-                ],
+        },
+    ];
+
+    private static buildOrder() {
+        return [
+            ['createdAt', 'DESC'],
+            ['id', 'DESC'],
+            [{ model: DietPlanDayEntity, as: 'days' }, 'dayIndex', 'ASC'],
+            [
+                { model: DietPlanDayEntity, as: 'days' },
+                { model: DietMealItemEntity, as: 'meals' },
+                'order',
+                'ASC',
             ],
+        ];
+    }
+
+    static findById(planId: string) {
+        return DietPlanEntity.findByPk(planId, {
+            include: this.include,
+            order: this.buildOrder() as any,
         });
     }
 
     static findByUserId(userId: string) {
         return DietPlanEntity.findOne({
             where: { userId },
-            include: [
-                {
-                    model: DietPlanDayEntity,
-                    as: 'days',
-                    include: [
-                        {
-                            model: DietMealItemEntity,
-                            as: 'meals',
-                        },
-                    ],
-                },
-            ],
-            order: [
-                [{ model: DietPlanDayEntity, as: 'days' }, 'dayIndex', 'ASC'],
-                [
-                    { model: DietPlanDayEntity, as: 'days' },
-                    { model: DietMealItemEntity, as: 'meals' },
-                    'order',
-                    'ASC',
-                ],
-            ],
+            include: this.include,
+            order: this.buildOrder() as any,
         });
     }
 
-    static async deleteExistingPlan(userId: string, transaction?: Transaction) {
-        await DietPlanEntity.destroy({ where: { userId }, transaction });
+    static listByUserId(userId: string) {
+        return DietPlanEntity.findAll({
+            where: { userId },
+            include: this.include,
+            order: this.buildOrder() as any,
+        });
     }
 
     static async createPlan(
@@ -77,8 +69,6 @@ export class DietPlanRepository {
         recommendedWaterIntakeMl: number | null,
     ) {
         return sequelize.transaction(async (transaction) => {
-            await this.deleteExistingPlan(userId, transaction);
-
             const plan = await DietPlanEntity.create({ userId, startDate, endDate, recommendedWaterIntakeMl }, { transaction });
 
             for (const day of days) {

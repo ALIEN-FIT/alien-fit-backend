@@ -43,6 +43,7 @@ export class TrainingPlanItemEntity extends Model {
     declare itemType: TrainingPlanItemType;
     declare extraVideos: Array<Record<string, unknown>> | null;
     declare dropsetConfig: Record<string, unknown> | null;
+    declare circuitItems: Array<Record<string, unknown>> | null;
     declare circuitGroup: string | null;
 
     declare readonly createdAt: Date;
@@ -75,6 +76,14 @@ TrainingPlanEntity.init(
         modelName: 'TrainingPlan',
         tableName: 'training_plans',
         timestamps: true,
+        indexes: [
+            {
+                fields: ['userId'],
+            },
+            {
+                fields: ['userId', 'createdAt'],
+            },
+        ],
     }
 );
 
@@ -188,6 +197,10 @@ TrainingPlanItemEntity.init(
             type: DataTypes.JSONB,
             allowNull: true,
         },
+        circuitItems: {
+            type: DataTypes.JSONB,
+            allowNull: true,
+        },
         circuitGroup: {
             type: DataTypes.STRING,
             allowNull: true,
@@ -208,7 +221,7 @@ TrainingPlanItemEntity.init(
 );
 
 TrainingPlanEntity.belongsTo(UserEntity, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
-UserEntity.hasOne(TrainingPlanEntity, { foreignKey: 'userId', as: 'trainingPlan', onDelete: 'CASCADE', hooks: true });
+UserEntity.hasMany(TrainingPlanEntity, { foreignKey: 'userId', as: 'trainingPlans', onDelete: 'CASCADE', hooks: true });
 
 TrainingPlanEntity.hasMany(TrainingPlanDayEntity, { foreignKey: 'planId', as: 'days', onDelete: 'CASCADE', hooks: true });
 TrainingPlanDayEntity.belongsTo(TrainingPlanEntity, { foreignKey: 'planId', as: 'plan' });
