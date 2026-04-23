@@ -58,10 +58,7 @@ export async function sendMessageAsUserController(req: Request, res: Response): 
         parentMessageId,
     });
 
-    const trimmed = typeof content === 'string' ? content.trim() : '';
-    const preview = trimmed
-        ? trimmed.slice(0, 280)
-        : (Array.isArray(mediaIds) && mediaIds.length > 0 ? '[Attachment]' : 'New message');
+    const preview = await NotificationService.buildChatMessageNotificationPreview(content, mediaIds);
 
     await NotificationService.notifyAdminsAndTrainers({
         type: NotificationTypes.MESSAGE,
@@ -176,10 +173,7 @@ export async function sendMessageAsTrainerController(req: Request, res: Response
         parentMessageId,
     });
 
-    const trimmed = typeof content === 'string' ? content.trim() : '';
-    const preview = trimmed
-        ? trimmed.slice(0, 280)
-        : (Array.isArray(mediaIds) && mediaIds.length > 0 ? '[Attachment]' : 'New message');
+    const preview = await NotificationService.buildChatMessageNotificationPreview(content, mediaIds);
 
     await NotificationService.notifyUserAboutAdminMessage({
         userId,

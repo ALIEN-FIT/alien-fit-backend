@@ -7,6 +7,8 @@ import { MediaEntity } from '../../media/v1/model/media.model.js';
 import { Roles } from '../../../constants/roles.js';
 import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
 import { PlanUpdateRequestService } from '../../requests/v1/plan-update-request.service.js';
+import { NotificationService } from '../../notification/v1/notification.service.js';
+import { NotificationTypes } from '../../../constants/notification-type.js';
 import { Op } from 'sequelize';
 
 interface ProfileUpdateResult {
@@ -47,6 +49,14 @@ async function assertMediaExistsIfProvided(mediaId: string | null | undefined, l
 }
 
 export class UserProfileService {
+  private static isInbodyOnlyUpdate(profileData: Partial<UserProfileEntity>) {
+    const changedKeys = Object.keys(profileData).filter((key) =>
+      Object.prototype.hasOwnProperty.call(profileData, key)
+    );
+
+    return changedKeys.length > 0 && changedKeys.every((key) => key === 'inbodyImage');
+  }
+
   static async getUserProfile(userId: string | number): Promise<UserProfileEntity> {
     const profile = await UserProfileEntity.findOne({
       where: { userId },
@@ -123,6 +133,7 @@ export class UserProfileService {
       where: { userId },
       order: [['createdAt', 'DESC'], ['id', 'DESC']],
     });
+    const isInbodyOnlyUpdate = this.isInbodyOnlyUpdate(profileData);
     const payload = this.buildProfileSnapshot(latestProfile, profileData);
     const profile = await UserProfileEntity.create({
       userId,
@@ -145,6 +156,15 @@ export class UserProfileService {
         payload ? { profileData: payload } : null
       );
       requestId = request.id;
+
+      await NotificationService.notifyAdminsAndTrainers({
+        type: NotificationTypes.GENERAL,
+        title: isInbodyOnlyUpdate ? 'InBody updated' : 'Profile updated',
+        body: isInbodyOnlyUpdate
+          ? `${actor.name} updated InBody results.`
+          : `${actor.name} updated profile data.`,
+        byUserId: actor.id.toString(),
+      });
     }
 
     return { profile, isProfileComplete, action: 'updated', planUpdateRequestId: requestId };

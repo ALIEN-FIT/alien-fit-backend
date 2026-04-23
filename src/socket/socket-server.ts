@@ -180,10 +180,7 @@ export function initializeSocketServer(server: HTTPServer) {
                 await PresenceService.heartbeat(userId);
 
                 if (role === Roles.USER) {
-                    const trimmed = typeof content === 'string' ? content.trim() : '';
-                    const preview = trimmed
-                        ? trimmed.slice(0, 280)
-                        : (Array.isArray(mediaIds) && mediaIds.length > 0 ? '[Attachment]' : 'New message');
+                    const preview = await NotificationService.buildChatMessageNotificationPreview(content, mediaIds);
 
                     await NotificationService.notifyAdminsAndTrainers({
                         type: NotificationTypes.MESSAGE,
@@ -192,10 +189,7 @@ export function initializeSocketServer(server: HTTPServer) {
                         byUserId: userId,
                     });
                 } else if (role === Roles.TRAINER || role === Roles.ADMIN) {
-                    const trimmed = typeof content === 'string' ? content.trim() : '';
-                    const preview = trimmed
-                        ? trimmed.slice(0, 280)
-                        : (Array.isArray(mediaIds) && mediaIds.length > 0 ? '[Attachment]' : 'New message');
+                    const preview = await NotificationService.buildChatMessageNotificationPreview(content, mediaIds);
 
                     await NotificationService.notifyUserAboutAdminMessage({
                         userId: resolvedUserId,
