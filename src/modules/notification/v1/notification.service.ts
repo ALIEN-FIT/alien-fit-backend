@@ -5,6 +5,7 @@ import { NotificationRepository } from './notification.repository.js';
 import { NotificationType, NotificationTypes } from '../../../constants/notification-type.js';
 import { enqueueBroadcastNotification, enqueueUserNotification } from '../../../utils/notification.utils.js';
 import { UserEntity } from '../../user/v1/entity/user.entity.js';
+import { MediaEntity } from '../../media/v1/model/media.model.js';
 import { Roles } from '../../../constants/roles.js';
 import { errorLogger } from '../../../config/logger.config.js';
 
@@ -16,6 +17,37 @@ interface ListInput {
 }
 
 export class NotificationService {
+    static async buildChatMessageNotificationPreview(content?: string | null, mediaIds?: string[] | null) {
+        const trimmed = typeof content === 'string' ? content.trim() : '';
+        if (trimmed) {
+            return trimmed.slice(0, 280);
+        }
+
+        const sanitizedMediaIds = Array.isArray(mediaIds)
+            ? mediaIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+            : [];
+
+        if (!sanitizedMediaIds.length) {
+            return 'New message';
+        }
+
+        const media = await MediaEntity.findAll({
+            where: { id: { [Op.in]: [...new Set(sanitizedMediaIds)] } },
+            attributes: ['mediaType'],
+        });
+
+        const mediaTypes = [...new Set(media.map((item) => String(item.mediaType)))];
+        if (!mediaTypes.length) {
+            return sanitizedMediaIds.length === 1 ? '[Attachment]' : `[${sanitizedMediaIds.length} attachments]`;
+        }
+
+        if (mediaTypes.length === 1) {
+            return buildSingleTypeAttachmentPreview(mediaTypes[0], sanitizedMediaIds.length);
+        }
+
+        return `[${sanitizedMediaIds.length} attachments: ${mediaTypes.join(', ')}]`;
+    }
+
     static async notifyUserAboutAdminMessage(payload: {
         userId: string;
         adminId?: string | null;
@@ -158,4 +190,29 @@ export class NotificationService {
             filters: payload.filters ?? {},
         });
     }
+}
+
+function buildSingleTypeAttachmentPreview(mediaType: string, count: number) {
+    const normalizedType = mediaType.trim().toLowerCase();
+
+    if (count === 1) {
+        return `[${capitalize(normalizedType)}]`;
+    }
+
+    const pluralByType: Record<string, string> = {
+        image: 'images',
+        video: 'videos',
+        audio: 'audio files',
+        document: 'documents',
+    };
+
+    return `[${count} ${pluralByType[normalizedType] ?? 'attachments'}]`;
+}
+
+function capitalize(value: string) {
+    if (!value) {
+        return value;
+    }
+
+    return value.charAt(0).toUpperCase() + value.slice(1);
 }
