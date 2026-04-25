@@ -194,7 +194,6 @@ export function initializeSocketServer(server: HTTPServer) {
                     await NotificationService.notifyUserAboutAdminMessage({
                         userId: resolvedUserId,
                         adminId: userId,
-                        adminName: socket.data.name,
                         preview,
                     });
                 }
