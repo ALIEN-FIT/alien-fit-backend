@@ -178,7 +178,6 @@ export async function sendMessageAsTrainerController(req: Request, res: Response
     await NotificationService.notifyUserAboutAdminMessage({
         userId,
         adminId: sender.id.toString(),
-        adminName: sender.name,
         preview,
     });
 
