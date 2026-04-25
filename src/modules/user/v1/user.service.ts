@@ -105,6 +105,15 @@ export class UserService {
     }
 
 
+    static async toggleIsProfileComplete(userId: string): Promise<UserEntity> {
+        const user = await UserEntity.findByPk(userId);
+        if (!user) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'User not found');
+        }
+        await user.update({ isProfileComplete: !user.isProfileComplete });
+        return this.getUserById(user.id.toString());
+    }
+
     static async deleteUser(userId: string): Promise<UserEntity> {
         const user = await UserEntity.findByPk(userId);
         if (!user) {
