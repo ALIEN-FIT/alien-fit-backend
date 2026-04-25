@@ -90,6 +90,10 @@ export const deleteUserSchema = Joi.object({
     id: JoiCustomValidateObjectId('ID', false)
 });
 
+export const toggleIsProfileCompleteSchema = Joi.object({
+    id: JoiCustomValidateObjectId('ID', false)
+});
+
 export const getUserByIdSchema = Joi.object({
     id: JoiCustomValidateObjectId('ID', false)
 });

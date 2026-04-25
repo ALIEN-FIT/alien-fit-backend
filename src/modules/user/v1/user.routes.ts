@@ -7,13 +7,15 @@ import {
     updateUserController,
     deleteUserController,
     getUserByIdController,
-    getUsersFilterController
+    getUsersFilterController,
+    toggleIsProfileCompleteController
 } from './user.controller.js';
 import {
     createUserSchema,
     deleteUserSchema,
     getUserByIdSchema,
     getUsersByFilterSchema,
+    toggleIsProfileCompleteSchema,
     updateUserSchema,
 } from './user.validation.js';
 
@@ -25,5 +27,6 @@ userRouterV1.use(authorizeRoles(Roles.ADMIN));
 userRouterV1.post('/', validateRequest(createUserSchema), createUserController);
 userRouterV1.get('/filter', validateRequest(getUsersByFilterSchema), getUsersFilterController);
 userRouterV1.get('/:id', validateRequest(getUserByIdSchema), getUserByIdController);
+userRouterV1.patch('/:id/toggle-is-profile-complete', validateRequest(toggleIsProfileCompleteSchema), toggleIsProfileCompleteController);
 userRouterV1.patch('/:id', validateRequest(updateUserSchema), updateUserController);
 userRouterV1.delete('/:id', validateRequest(deleteUserSchema), deleteUserController);

@@ -90,6 +90,14 @@ export async function updateUserController(req: Request, res: Response): Promise
     });
 }
 
+export async function toggleIsProfileCompleteController(req: Request, res: Response): Promise<void> {
+    const user = await UserService.toggleIsProfileComplete(req.params.id);
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { user }
+    });
+}
+
 export async function deleteUserController(req: Request, res: Response): Promise<void> {
     const user = await UserService.deleteUser(req.params.id);
     res.status(StatusCodes.OK).json({

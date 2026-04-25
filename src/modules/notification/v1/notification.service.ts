@@ -9,6 +9,8 @@ import { MediaEntity } from '../../media/v1/model/media.model.js';
 import { Roles } from '../../../constants/roles.js';
 import { errorLogger } from '../../../config/logger.config.js';
 
+export const ADMIN_CHAT_NOTIFICATION_DISPLAY_NAME = 'coach mahmoud ali';
+
 interface ListInput {
     page?: number;
     limit?: number;
@@ -51,14 +53,13 @@ export class NotificationService {
     static async notifyUserAboutAdminMessage(payload: {
         userId: string;
         adminId?: string | null;
-        adminName: string;
         preview: string;
     }) {
         await enqueueUserNotification({
             userId: payload.userId,
             byUserId: payload.adminId ?? null,
             type: NotificationTypes.ADMIN_MESSAGE,
-            title: `New message from ${payload.adminName}`,
+            title: `New message from ${ADMIN_CHAT_NOTIFICATION_DISPLAY_NAME}`,
             body: payload.preview,
         });
     }
