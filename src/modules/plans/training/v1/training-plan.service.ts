@@ -253,17 +253,19 @@ export class TrainingPlanService {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan item not found');
         }
 
+        const newItemType = payload.itemType ?? (item.itemType as any) ?? 'REGULAR';
+
         const currentData: TrainingPlanItemInput = {
             trainingVideoId: payload.trainingVideoId ?? item.trainingVideoId,
             sets: payload.sets ?? Number(item.sets ?? 0),
             repeats: payload.repeats ?? Number(item.repeats ?? 0),
-            itemType: payload.itemType ?? (item.itemType as any),
-            isSuperset: payload.isSuperset,
-            supersetItems: payload.supersetItems ?? (Array.isArray(item.supersetItems) ? (item.supersetItems as any) : undefined),
-            extraVideos: payload.extraVideos ?? (Array.isArray(item.extraVideos) ? (item.extraVideos as any) : undefined),
-            dropsetConfig: payload.dropsetConfig ?? ((item.dropsetConfig as any) ?? undefined),
-            circuitItems: payload.circuitItems ?? (Array.isArray(item.circuitItems) ? (item.circuitItems as any) : undefined),
-            circuitGroup: payload.circuitGroup ?? item.circuitGroup ?? undefined,
+            itemType: newItemType,
+            isSuperset: newItemType === 'SUPERSET' ? (payload.isSuperset ?? item.isSuperset) : undefined,
+            supersetItems: newItemType === 'SUPERSET' ? (payload.supersetItems ?? (Array.isArray(item.supersetItems) ? (item.supersetItems as any) : undefined)) : undefined,
+            extraVideos: newItemType === 'SUPERSET' ? (payload.extraVideos ?? (Array.isArray(item.extraVideos) ? (item.extraVideos as any) : undefined)) : undefined,
+            dropsetConfig: newItemType === 'DROPSET' ? (payload.dropsetConfig ?? ((item.dropsetConfig as any) ?? undefined)) : undefined,
+            circuitItems: newItemType === 'CIRCUIT' ? (payload.circuitItems ?? (Array.isArray(item.circuitItems) ? (item.circuitItems as any) : undefined)) : undefined,
+            circuitGroup: newItemType === 'CIRCUIT' ? (payload.circuitGroup ?? item.circuitGroup ?? undefined) : undefined,
         };
 
         const videoIds = this.collectVideoIds([{ name: 'day', items: [currentData] }]);
