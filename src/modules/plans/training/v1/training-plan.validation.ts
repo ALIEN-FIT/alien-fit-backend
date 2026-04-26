@@ -85,12 +85,18 @@ export const trainingPlanItemParamSchema = Joi.object({
     itemId: JoiCustomValidateObjectId('Training plan item ID', true),
 });
 
+export const trainingPlanAdminDayItemParamSchema = trainingPlanAdminDayParamSchema.concat(trainingPlanItemParamSchema);
+
 export const updateTrainingPlanDaySchema = Joi.object({
     name: Joi.string().trim().min(1).optional(),
     items: Joi.array().items(trainingPlanItemSchema).optional(),
+    addItems: Joi.array().items(trainingPlanItemSchema).min(1).optional(),
+    removeItemIds: Joi.array().items(JoiCustomValidateObjectId('Training plan item ID')).min(1).optional(),
 })
     .min(1)
     .messages({ 'object.min': 'At least one field must be provided' });
+
+export const addTrainingPlanItemSchema = trainingPlanItemSchema;
 
 export const updateTrainingPlanItemSchema = Joi.object({
     trainingVideoId: JoiCustomValidateObjectId('Training video ID', false),

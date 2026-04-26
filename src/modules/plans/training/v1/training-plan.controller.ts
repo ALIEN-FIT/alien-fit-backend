@@ -316,6 +316,17 @@ export async function adminClearTrainingPlanDayController(req: Request, res: Res
     });
 }
 
+export async function adminAddTrainingPlanItemController(req: Request, res: Response): Promise<void> {
+    const { planId, dayIndex } = req.params;
+    const plan = await TrainingPlanService.addPlanItemByPlanId(req.user!, planId, Number(dayIndex), req.body);
+    const trainingPlan = await serializeTrainingPlan(plan);
+
+    res.status(StatusCodes.CREATED).json({
+        status: 'success',
+        data: { trainingPlan },
+    });
+}
+
 export async function adminUpdateTrainingPlanItemController(req: Request, res: Response): Promise<void> {
     const { itemId } = req.params;
     const plan = await TrainingPlanService.updatePlanItemById(req.user!, itemId, req.body);
@@ -330,6 +341,17 @@ export async function adminUpdateTrainingPlanItemController(req: Request, res: R
 export async function adminDeleteTrainingPlanItemController(req: Request, res: Response): Promise<void> {
     const { itemId } = req.params;
     const plan = await TrainingPlanService.deletePlanItemById(req.user!, itemId);
+    const trainingPlan = await serializeTrainingPlan(plan);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { trainingPlan },
+    });
+}
+
+export async function adminDeleteTrainingPlanDayItemController(req: Request, res: Response): Promise<void> {
+    const { planId, dayIndex, itemId } = req.params;
+    const plan = await TrainingPlanService.deletePlanItemByPlanId(req.user!, planId, Number(dayIndex), itemId);
     const trainingPlan = await serializeTrainingPlan(plan);
 
     res.status(StatusCodes.OK).json({

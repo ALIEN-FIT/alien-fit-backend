@@ -55,6 +55,8 @@ interface CreateTrainingPlanPayload {
 interface UpdateTrainingPlanDayPayload {
     name?: string;
     items?: TrainingPlanItemInput[];
+    addItems?: TrainingPlanItemInput[];
+    removeItemIds?: string[];
 }
 
 export class TrainingPlanService {
@@ -160,52 +162,43 @@ export class TrainingPlanService {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan day not found');
         }
 
+        if (payload.items && ((payload.addItems?.length ?? 0) > 0 || (payload.removeItemIds?.length ?? 0) > 0)) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Use either items replacement or addItems/removeItemIds, not both');
+        }
+
         if (payload.items) {
             const videoIds = this.collectVideoIds([{ name: day.name ?? `Day ${dayIndex}`, dayNumber: dayIndex, items: payload.items }]);
             const trainingVideosMap = await TrainingVideoService.ensureVideosExist(videoIds);
             const normalizedItems = payload.items.map((item) => this.normalizeItem(item, trainingVideosMap));
 
-            day.items = normalizedItems.map((item, index) => ({
-                order: index + 1,
-                title: item.trainingVideo.title,
-                videoLink: item.trainingVideo.videoUrl,
-                description: item.trainingVideo.description ?? null,
-                duration: null,
-                repeats: item.repeats,
-                sets: item.sets,
-                trainingVideoId: item.trainingVideoId,
-                isSuperset: Boolean(item.isSuperset),
-                itemType: item.itemType,
-                supersetItems: item.itemType === 'SUPERSET'
-                    ? (item.supersetItems ?? []).map((superset) => ({
-                        trainingVideoId: superset.trainingVideoId,
-                        sets: superset.sets,
-                        repeats: superset.repeats,
-                    }))
-                    : null,
-                extraVideos: item.itemType === 'SUPERSET'
-                    ? (item.extraVideos ?? []).map((video) => ({ trainingVideoId: video.trainingVideoId }))
-                    : null,
-                dropsetConfig: item.itemType === 'DROPSET'
-                    ? {
-                        dropPercents: item.dropsetConfig?.dropPercents ?? [],
-                        ...(item.dropsetConfig?.restSeconds !== undefined ? { restSeconds: item.dropsetConfig.restSeconds } : {}),
-                    }
-                    : null,
-                circuitItems: item.itemType === 'CIRCUIT'
-                    ? (item.circuitItems ?? []).map((circuitItem) => ({
-                        trainingVideoId: circuitItem.trainingVideoId,
-                        sets: circuitItem.sets,
-                        repeats: circuitItem.repeats,
-                    }))
-                    : null,
-                circuitGroup: item.itemType === 'CIRCUIT' ? item.circuitGroup ?? null : null,
-            }));
+            day.items = normalizedItems.map((item, index) => this.buildSnapshotItem(item, index + 1));
+        } else {
+            if (payload.removeItemIds?.length) {
+                const requestedIds = new Set(payload.removeItemIds);
+                const existingIds = new Set(day.items.map((item) => item.id).filter(Boolean));
+                const missingIds = payload.removeItemIds.filter((itemId) => !existingIds.has(itemId));
+                if (missingIds.length > 0) {
+                    throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan item not found');
+                }
 
-            if (payload.name !== undefined) {
-                day.name = payload.name?.trim() || null;
+                day.items = day.items
+                    .filter((item) => !item.id || !requestedIds.has(item.id))
+                    .map((item, index) => ({
+                        ...item,
+                        order: index + 1,
+                    }));
             }
-        } else if (payload.name !== undefined) {
+
+            if (payload.addItems?.length) {
+                const videoIds = this.collectVideoIds([{ name: day.name ?? `Day ${dayIndex}`, dayNumber: dayIndex, items: payload.addItems }]);
+                const trainingVideosMap = await TrainingVideoService.ensureVideosExist(videoIds);
+                const normalizedItems = payload.addItems.map((item) => this.normalizeItem(item, trainingVideosMap));
+
+                day.items.push(...normalizedItems.map((item, index) => this.buildSnapshotItem(item, day.items.length + index + 1)));
+            }
+        }
+
+        if (payload.name !== undefined) {
             day.name = payload.name?.trim() || null;
         }
 
@@ -225,6 +218,32 @@ export class TrainingPlanService {
         }
 
         day.items = [];
+        return this.createPlanVersion(snapshot);
+    }
+
+    static async addPlanItemByPlanId(
+        actor: UserEntity,
+        planId: string,
+        dayIndex: number,
+        payload: TrainingPlanItemInput,
+    ): Promise<TrainingPlanEntity> {
+        if (actor.role !== Roles.ADMIN) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust training plans');
+        }
+
+        const plan = await this.getEditablePlanVersion(planId);
+        const snapshot = this.clonePlanSnapshot(plan);
+        const day = snapshot.days.find((currentDay) => currentDay.dayIndex === dayIndex);
+        if (!day) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan day not found');
+        }
+
+        const videoIds = this.collectVideoIds([{ name: day.name ?? `Day ${dayIndex}`, dayNumber: dayIndex, items: [payload] }]);
+        const trainingVideosMap = await TrainingVideoService.ensureVideosExist(videoIds);
+        const normalized = this.normalizeItem(payload, trainingVideosMap);
+
+        day.items.push(this.buildSnapshotItem(normalized, day.items.length + 1));
+
         return this.createPlanVersion(snapshot);
     }
 
@@ -312,6 +331,38 @@ export class TrainingPlanService {
         const targetDay = snapshot.days.find((currentDay) => currentDay.id === day.id);
         if (!targetDay) {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan day not found');
+        }
+
+        targetDay.items = targetDay.items
+            .filter((currentItem) => currentItem.id !== itemId)
+            .map((currentItem, index) => ({
+                ...currentItem,
+                order: index + 1,
+            }));
+
+        return this.createPlanVersion(snapshot);
+    }
+
+    static async deletePlanItemByPlanId(
+        actor: UserEntity,
+        planId: string,
+        dayIndex: number,
+        itemId: string,
+    ): Promise<TrainingPlanEntity> {
+        if (actor.role !== Roles.ADMIN) {
+            throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Only admins can adjust training plans');
+        }
+
+        const plan = await this.getEditablePlanVersion(planId);
+        const snapshot = this.clonePlanSnapshot(plan);
+        const targetDay = snapshot.days.find((currentDay) => currentDay.dayIndex === dayIndex);
+        if (!targetDay) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan day not found');
+        }
+
+        const itemExists = targetDay.items.some((currentItem) => currentItem.id === itemId);
+        if (!itemExists) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan item not found');
         }
 
         targetDay.items = targetDay.items
@@ -569,6 +620,45 @@ export class TrainingPlanService {
             extraVideos,
             dropsetConfig,
             circuitGroup,
+        };
+    }
+
+    private static buildSnapshotItem(item: NormalizedTrainingPlanItem, order: number) {
+        return {
+            order,
+            title: item.trainingVideo.title,
+            videoLink: item.trainingVideo.videoUrl,
+            description: item.trainingVideo.description ?? null,
+            duration: null,
+            repeats: item.repeats,
+            sets: item.sets,
+            trainingVideoId: item.trainingVideoId,
+            isSuperset: item.itemType === 'SUPERSET',
+            itemType: item.itemType,
+            supersetItems: item.itemType === 'SUPERSET'
+                ? (item.supersetItems ?? []).map((superset) => ({
+                    trainingVideoId: superset.trainingVideoId,
+                    sets: superset.sets,
+                    repeats: superset.repeats,
+                }))
+                : null,
+            extraVideos: item.itemType === 'SUPERSET'
+                ? (item.extraVideos ?? []).map((video) => ({ trainingVideoId: video.trainingVideoId }))
+                : null,
+            dropsetConfig: item.itemType === 'DROPSET'
+                ? {
+                    dropPercents: item.dropsetConfig?.dropPercents ?? [],
+                    ...(item.dropsetConfig?.restSeconds !== undefined ? { restSeconds: item.dropsetConfig.restSeconds } : {}),
+                }
+                : null,
+            circuitItems: item.itemType === 'CIRCUIT'
+                ? (item.circuitItems ?? []).map((circuitItem) => ({
+                    trainingVideoId: circuitItem.trainingVideoId,
+                    sets: circuitItem.sets,
+                    repeats: circuitItem.repeats,
+                }))
+                : null,
+            circuitGroup: item.itemType === 'CIRCUIT' ? item.circuitGroup ?? null : null,
         };
     }
 
