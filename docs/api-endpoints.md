@@ -143,11 +143,47 @@ Request body (replace full day items):
 }
 ```
 
+Request body (edit day by adding/removing items without replacing the full day):
+
+```json
+{
+  "addItems": [
+    {
+      "trainingVideoId": "d4f37b93-126f-4f1f-a10a-9d5275fc9f55",
+      "sets": 4,
+      "repeats": 12,
+      "itemType": "REGULAR"
+    }
+  ],
+  "removeItemIds": [
+    "8a8985cf-8a46-46c4-a7b1-3281e5a3e410"
+  ]
+}
+```
+
 Clear (delete all items from) a training day:
 
 ```
 DELETE /api/v1/plans/training/admin/:planId/day/:dayIndex
 Authorization: Bearer <admin-token>
+```
+
+Add one training item to the end of a training day:
+
+```
+POST /api/v1/plans/training/admin/:planId/day/:dayIndex/item
+Authorization: Bearer <admin-token>
+```
+
+Request body:
+
+```json
+{
+  "trainingVideoId": "d4f37b93-126f-4f1f-a10a-9d5275fc9f55",
+  "sets": 4,
+  "repeats": 12,
+  "itemType": "REGULAR"
+}
 ```
 
 Update one training item only:
@@ -169,6 +205,13 @@ Request body:
     "restSeconds": 20
   }
 }
+```
+
+Remove one training item from a specific day:
+
+```
+DELETE /api/v1/plans/training/admin/:planId/day/:dayIndex/item/:itemId
+Authorization: Bearer <admin-token>
 ```
 
 Delete one training item:

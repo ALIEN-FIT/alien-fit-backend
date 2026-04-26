@@ -9,16 +9,20 @@ import {
     getMyTrainingPlanController,
     adminUpdateTrainingPlanDayController,
     adminClearTrainingPlanDayController,
+    adminAddTrainingPlanItemController,
     adminUpdateTrainingPlanItemController,
     adminDeleteTrainingPlanItemController,
+    adminDeleteTrainingPlanDayItemController,
 } from './training-plan.controller.js';
 import {
     createTrainingPlanSchema,
     trainingPlanUserParamSchema,
     getMyTrainingPlanQuerySchema,
     trainingPlanAdminDayParamSchema,
+    trainingPlanAdminDayItemParamSchema,
     trainingPlanItemParamSchema,
     updateTrainingPlanDaySchema,
+    addTrainingPlanItemSchema,
     updateTrainingPlanItemSchema,
 } from './training-plan.validation.js';
 
@@ -69,6 +73,20 @@ trainingPlanRouterV1.delete(
     authorizeRoles(Roles.ADMIN),
     validateRequest(trainingPlanAdminDayParamSchema),
     adminClearTrainingPlanDayController,
+);
+
+trainingPlanRouterV1.post(
+    '/admin/:planId/day/:dayIndex/item',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(addTrainingPlanItemSchema.concat(trainingPlanAdminDayParamSchema)),
+    adminAddTrainingPlanItemController,
+);
+
+trainingPlanRouterV1.delete(
+    '/admin/:planId/day/:dayIndex/item/:itemId',
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(trainingPlanAdminDayItemParamSchema),
+    adminDeleteTrainingPlanDayItemController,
 );
 
 trainingPlanRouterV1.patch(
