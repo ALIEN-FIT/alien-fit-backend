@@ -11,6 +11,10 @@ import { TrainingVideoEntity } from '../../../training-video/v1/entity/training-
 import { SubscriptionService } from '../../../subscription/v1/subscription.service.js';
 import { AdminSettingsService } from '../../../admin-settings/v1/admin-settings.service.js';
 import { TrainingPlanDayEntity, TrainingPlanItemEntity } from './entity/training-plan.entity.js';
+import {
+    buildTrainingPlanItemUpdateInput,
+    type UpdateTrainingPlanItemPayload,
+} from './training-plan-item-normalization.js';
 
 interface SupersetItemInput {
     trainingVideoId: string;
@@ -51,19 +55,6 @@ interface CreateTrainingPlanPayload {
 interface UpdateTrainingPlanDayPayload {
     name?: string;
     items?: TrainingPlanItemInput[];
-}
-
-interface UpdateTrainingPlanItemPayload {
-    sets?: number;
-    repeats?: number;
-    itemType?: 'REGULAR' | 'SUPERSET' | 'DROPSET' | 'CIRCUIT';
-    isSuperset?: boolean;
-    trainingVideoId?: string;
-    supersetItems?: SupersetItemInput[];
-    extraVideos?: Array<{ trainingVideoId: string }>;
-    dropsetConfig?: { dropPercents: number[]; restSeconds?: number };
-    circuitItems?: CircuitItemInput[];
-    circuitGroup?: string;
 }
 
 export class TrainingPlanService {
@@ -253,20 +244,7 @@ export class TrainingPlanService {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Training plan item not found');
         }
 
-        const newItemType = payload.itemType ?? (item.itemType as any) ?? 'REGULAR';
-
-        const currentData: TrainingPlanItemInput = {
-            trainingVideoId: payload.trainingVideoId ?? item.trainingVideoId,
-            sets: payload.sets ?? Number(item.sets ?? 0),
-            repeats: payload.repeats ?? Number(item.repeats ?? 0),
-            itemType: newItemType,
-            isSuperset: newItemType === 'SUPERSET' ? (payload.isSuperset ?? item.isSuperset) : undefined,
-            supersetItems: newItemType === 'SUPERSET' ? (payload.supersetItems ?? (Array.isArray(item.supersetItems) ? (item.supersetItems as any) : undefined)) : undefined,
-            extraVideos: newItemType === 'SUPERSET' ? (payload.extraVideos ?? (Array.isArray(item.extraVideos) ? (item.extraVideos as any) : undefined)) : undefined,
-            dropsetConfig: newItemType === 'DROPSET' ? (payload.dropsetConfig ?? ((item.dropsetConfig as any) ?? undefined)) : undefined,
-            circuitItems: newItemType === 'CIRCUIT' ? (payload.circuitItems ?? (Array.isArray(item.circuitItems) ? (item.circuitItems as any) : undefined)) : undefined,
-            circuitGroup: newItemType === 'CIRCUIT' ? (payload.circuitGroup ?? item.circuitGroup ?? undefined) : undefined,
-        };
+        const currentData: TrainingPlanItemInput = buildTrainingPlanItemUpdateInput(item, payload);
 
         const videoIds = this.collectVideoIds([{ name: 'day', items: [currentData] }]);
         const trainingVideosMap = await TrainingVideoService.ensureVideosExist(videoIds);
