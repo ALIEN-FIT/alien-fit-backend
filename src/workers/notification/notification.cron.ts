@@ -10,6 +10,8 @@ import { notificationQueue } from './notification.queue.js';
 import { NotificationTypes } from '../../constants/notification-type.js';
 import { NotificationEntity } from '../../modules/notification/v1/entity/notification.entity.js';
 import { UserProfileEntity } from '../../modules/user-profile/v1/model/user-profile.model.js';
+import { PlanUpdateRequestService } from '../../modules/requests/v1/plan-update-request.service.js';
+import { getCapabilitiesForPlanType } from '../../modules/subscription-packages/v1/subscription-plan-type.js';
 
 function startOfDayUTC(date: Date) {
     const d = new Date(date);
@@ -282,6 +284,70 @@ async function enqueueSubscriptionEndingTodayAlerts() {
     infoLogger.info(`Queued ${jobs.length} subscription ending today notifications`);
 }
 
+async function enqueuePlanUpdateCycleAlerts() {
+    const now = new Date();
+
+    const dueSubscriptions = await SubscriptionEntity.findAll({
+        where: {
+            isSubscribed: true,
+            nextProfileUpdateDue: {
+                [Op.lte]: now,
+            },
+        },
+        include: [{
+            model: UserEntity,
+            as: 'user',
+            required: true,
+            where: { role: Roles.USER },
+            attributes: ['id'],
+        }],
+        order: [['nextProfileUpdateDue', 'ASC']],
+    });
+
+    if (dueSubscriptions.length === 0) {
+        return;
+    }
+
+    let createdCount = 0;
+
+    for (const subscription of dueSubscriptions) {
+        if (!subscription.nextProfileUpdateDue) {
+            continue;
+        }
+
+        const capabilities = getCapabilitiesForPlanType(subscription.planType);
+        const requestedPlanKinds: Array<'workout-plan' | 'diet-plan'> = [];
+
+        if (capabilities.canAccessTraining) {
+            requestedPlanKinds.push('workout-plan');
+        }
+
+        if (capabilities.canAccessDiet) {
+            requestedPlanKinds.push('diet-plan');
+        }
+
+        if (requestedPlanKinds.length === 0) {
+            continue;
+        }
+
+        const { created } = await PlanUpdateRequestService.ensurePendingCycleCompletionRequest(
+            String(subscription.userId),
+            {
+                dueDate: subscription.nextProfileUpdateDue,
+                requestedPlanKinds,
+            },
+        );
+
+        if (created) {
+            createdCount += 1;
+        }
+    }
+
+    if (createdCount > 0) {
+        infoLogger.info(`Queued ${createdCount} cycle-complete plan update requests`);
+    }
+}
+
 function buildSubscriptionEndingTodayBody(userNames: string[]) {
     if (userNames.length <= 5) {
         return `Subscriptions ending today: ${userNames.join(', ')}.`;
@@ -298,6 +364,7 @@ export function startNotificationCron() {
         try {
             await enqueueDailyReminders();
             await enqueueSubscriptionEndingTodayAlerts();
+            await enqueuePlanUpdateCycleAlerts();
         } catch (err) {
             errorLogger.error('Notification cron failed', err);
         }

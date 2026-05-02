@@ -15,6 +15,16 @@ export class PlanUpdateRequestRepository {
         });
     }
 
+    static findLatestByUserAndType(userId: string, type: string) {
+        return PlanUpdateRequestEntity.findOne({
+            where: {
+                userId,
+                type,
+            },
+            order: [['createdAt', 'DESC'], ['id', 'DESC']],
+        });
+    }
+
     static listAll({ status, limit, offset }: { status?: string; limit: number; offset: number }) {
         const where = status ? { status } : {};
         return PlanUpdateRequestEntity.findAndCountAll({

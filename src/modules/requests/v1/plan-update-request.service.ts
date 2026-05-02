@@ -7,6 +7,8 @@ import { NotificationService } from '../../notification/v1/notification.service.
 import { NotificationTypes } from '../../../constants/notification-type.js';
 import { Roles } from '../../../constants/roles.js';
 
+type RequestedPlanKind = 'workout-plan' | 'diet-plan';
+
 export class PlanUpdateRequestService {
     private static async notifyAdminsAboutPendingRequest(userId: string, created: boolean) {
         const user = await UserService.getUserById(userId);
@@ -56,6 +58,56 @@ export class PlanUpdateRequestService {
         return this.createOrUpdatePendingRequest(userId, 'manual', payload, notes);
     }
 
+    static async ensurePendingCycleCompletionRequest(
+        userId: string,
+        input: {
+            dueDate: Date;
+            requestedPlanKinds: RequestedPlanKind[];
+        },
+    ): Promise<{ request: PlanUpdateRequestEntity; created: boolean }> {
+        const user = await UserService.getUserById(userId);
+        if (user.role !== Roles.USER) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Plan update requests can only be created for users');
+        }
+
+        const requestedPlanKinds = [...new Set(input.requestedPlanKinds)]
+            .filter((value): value is RequestedPlanKind => value === 'workout-plan' || value === 'diet-plan');
+
+        if (requestedPlanKinds.length === 0) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'At least one requested plan kind is required');
+        }
+
+        const existingCycleRequest = await PlanUpdateRequestRepository.findLatestByUserAndType(userId, 'cycle-complete');
+        if (existingCycleRequest && existingCycleRequest.createdAt.getTime() >= input.dueDate.getTime()) {
+            return { request: existingCycleRequest, created: false };
+        }
+
+        const pending = await PlanUpdateRequestRepository.findPendingByUser(userId);
+        if (pending) {
+            return { request: pending, created: false };
+        }
+
+        const request = await PlanUpdateRequestRepository.create({
+            userId,
+            type: 'cycle-complete',
+            payload: {
+                reason: '30-day-cycle-complete',
+                dueDate: input.dueDate.toISOString(),
+                requestedPlanKinds,
+            },
+            notes: `User completed the 30-day cycle and needs an updated ${formatRequestedPlanKinds(requestedPlanKinds)}.`,
+        });
+
+        await NotificationService.notifyAdminsAndTrainers({
+            type: NotificationTypes.GENERAL,
+            title: '30-day cycle completed',
+            body: `${user.name} (${user.provider}) completed the 30-day cycle and needs an updated ${formatRequestedPlanKinds(requestedPlanKinds)}.`,
+            byUserId: user.id.toString(),
+        });
+
+        return { request, created: true };
+    }
+
     static async listRequests(status: string | undefined, page: number, limit: number) {
         const normalizedLimit = Number.isFinite(limit) ? Math.floor(limit) : 20;
         const normalizedPage = Number.isFinite(page) ? Math.floor(page) : 1;
@@ -91,4 +143,12 @@ export class PlanUpdateRequestService {
     ): Promise<{ request: PlanUpdateRequestEntity; created: boolean }> {
         return this.createOrUpdatePendingRequest(userId, 'profile-update', profilePayload);
     }
+}
+
+function formatRequestedPlanKinds(requestedPlanKinds: RequestedPlanKind[]) {
+    if (requestedPlanKinds.length === 2) {
+        return 'workout plan and diet plan';
+    }
+
+    return requestedPlanKinds[0] === 'diet-plan' ? 'diet plan' : 'workout plan';
 }
