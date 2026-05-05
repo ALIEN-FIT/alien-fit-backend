@@ -41,42 +41,78 @@ export async function sendFcmToTokens(tokens: string[], payload: FcmPayload) {
 
     const tokenChunks = chunk(uniqueTokens, FCM_MULTICAST_LIMIT);
 
+    const transientErrors: unknown[] = [];
+
     for (const group of tokenChunks) {
+        let response;
         try {
-            const response = await admin.messaging().sendEachForMulticast({
+            response = await admin.messaging().sendEachForMulticast({
                 tokens: group,
                 notification: {
                     title: payload.title,
                     body: payload.body,
                 },
                 data: payload.data,
+                android: {
+                    priority: 'high',
+                    ttl: 2419200000,
+                    notification: {
+                        defaultSound: true,
+                        defaultVibrateTimings: true,
+                    },
+                },
+                apns: {
+                    headers: {
+                        'apns-priority': '10',
+                        'apns-push-type': 'alert',
+                        'apns-expiration': '0',
+                    },
+                    payload: {
+                        aps: {
+                            sound: 'default',
+                            mutableContent: true,
+                            contentAvailable: true,
+                            alert: {
+                                title: payload.title,
+                                body: payload.body,
+                            },
+                        },
+                    },
+                },
             });
-
-            if (response.failureCount > 0) {
-                const invalidTokens: string[] = [];
-                response.responses.forEach((r, idx) => {
-                    if (!r.success) {
-                        const maybeError = r.error as { code?: string } | undefined;
-                        const code = maybeError?.code;
-                        if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token') {
-                            invalidTokens.push(group[idx]);
-                        } else {
-                            errorLogger.error('FCM send error', r.error);
-                        }
-                    }
-                });
-
-                if (invalidTokens.length) {
-                    await UserSessionEntity.update(
-                        { fcmToken: null },
-                        { where: { fcmToken: { [Op.in]: invalidTokens } } }
-                    );
-                    infoLogger.info(`Removed ${invalidTokens.length} invalid FCM tokens`);
-                }
-            }
         } catch (err) {
             errorLogger.error('FCM multicast failed', err);
+            transientErrors.push(err);
+            continue;
         }
+
+        if (response.failureCount > 0) {
+            const invalidTokens: string[] = [];
+            response.responses.forEach((r, idx) => {
+                if (!r.success) {
+                    const maybeError = r.error as { code?: string } | undefined;
+                    const code = maybeError?.code;
+                    if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token') {
+                        invalidTokens.push(group[idx]);
+                    } else {
+                        errorLogger.error('FCM send error', r.error);
+                        transientErrors.push(r.error);
+                    }
+                }
+            });
+
+            if (invalidTokens.length) {
+                await UserSessionEntity.update(
+                    { fcmToken: null },
+                    { where: { fcmToken: { [Op.in]: invalidTokens } } }
+                );
+                infoLogger.info(`Removed ${invalidTokens.length} invalid FCM tokens`);
+            }
+        }
+    }
+
+    if (transientErrors.length > 0) {
+        throw new Error(`FCM send had ${transientErrors.length} transient failures`);
     }
 }
 
