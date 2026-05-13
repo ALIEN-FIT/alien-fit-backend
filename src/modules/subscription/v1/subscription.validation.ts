@@ -37,6 +37,12 @@ export const subscriptionAdminDefrostSchema = Joi.object({
     userId: JoiCustomValidateObjectId('User ID', true),
 });
 
+export const subscriptionAdminSetDatesSchema = Joi.object({
+    userId: JoiCustomValidateObjectId('User ID', true),
+    startDate: Joi.date().iso().allow(null).optional(),
+    endDate: Joi.date().iso().allow(null).optional(),
+}).or('startDate', 'endDate');
+
 export const subscriptionCheckoutSchema = Joi.object({
     packageId: JoiCustomValidateObjectId('Package ID', true),
     planType: Joi.string().valid('diet', 'training', 'both').required(),

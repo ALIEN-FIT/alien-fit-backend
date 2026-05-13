@@ -12,6 +12,7 @@ import {
     declineFreezeRequestController,
     defrostSubscriptionController,
     adminDefrostSubscriptionController,
+    adminSetSubscriptionDatesController,
     createSubscriptionCheckoutController,
     fawaterakWebhookController,
 } from './subscription.controller.js';
@@ -22,6 +23,7 @@ import {
     subscriptionApproveFreezeRequestSchema,
     subscriptionDeclineFreezeRequestSchema,
     subscriptionAdminDefrostSchema,
+    subscriptionAdminSetDatesSchema,
     subscriptionCheckoutSchema,
     fawaterakWebhookSchema,
 } from './subscription.validation.js';
@@ -85,6 +87,14 @@ subscriptionRouterV1.post(
     authorizeRoles(Roles.ADMIN),
     validateRequest(subscriptionAdminDefrostSchema),
     adminDefrostSubscriptionController,
+);
+
+subscriptionRouterV1.patch(
+    '/dates/:userId',
+    auth,
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(subscriptionAdminSetDatesSchema),
+    adminSetSubscriptionDatesController,
 );
 
 // User checkout
