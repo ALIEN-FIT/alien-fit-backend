@@ -112,6 +112,22 @@ export async function adminDefrostSubscriptionController(req: Request, res: Resp
     });
 }
 
+export async function adminSetSubscriptionDatesController(req: Request, res: Response): Promise<void> {
+    const { userId } = req.params;
+    const { startDate, endDate } = req.body;
+
+    const subscription = await SubscriptionService.adminSetSubscriptionDates(
+        userId,
+        startDate !== undefined ? (startDate ? new Date(startDate) : null) : undefined,
+        endDate !== undefined ? (endDate ? new Date(endDate) : null) : undefined,
+    );
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: { subscription },
+    });
+}
+
 export async function createSubscriptionCheckoutController(req: Request, res: Response): Promise<void> {
     const userId = req.user!.id.toString();
     const { packageId, planType, currency, redirectionUrls } = req.body;

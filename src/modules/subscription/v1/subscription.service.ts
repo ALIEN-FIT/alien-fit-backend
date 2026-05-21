@@ -432,6 +432,39 @@ export class SubscriptionService {
         return subscription;
     }
 
+    static async adminSetSubscriptionDates(
+        userId: string,
+        startDate?: Date | null,
+        endDate?: Date | null,
+    ): Promise<SubscriptionEntity> {
+        await UserService.getUserById(userId);
+
+        const subscription = await SubscriptionRepository.findByUserId(userId);
+        if (!subscription) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Subscription not found for this user');
+        }
+
+        const updates: Partial<SubscriptionEntity> = {};
+
+        if (startDate !== undefined) {
+            updates.startDate = startDate;
+        }
+
+        const effectiveEndDate = endDate !== undefined ? endDate : subscription.endDate;
+        if (endDate !== undefined) {
+            updates.endDate = endDate;
+        }
+
+        // Recalculate active state based on the effective end date
+        const now = new Date();
+        const isActive = effectiveEndDate ? effectiveEndDate.getTime() >= now.getTime() : false;
+        updates.isActive = isActive;
+        updates.isSubscribed = isActive;
+
+        await subscription.update(updates);
+        return subscription;
+    }
+
     static async recordProfileUpdate(userId: string, updateDate = new Date()): Promise<SubscriptionEntity | null> {
         const subscription = await SubscriptionRepository.findByUserId(userId);
         if (!subscription) {
