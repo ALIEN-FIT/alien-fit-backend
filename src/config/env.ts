@@ -19,7 +19,7 @@ const dbUriSchema = z.string().min(1).refine((value) => {
     }
 }, 'DB_URI must be a valid connection string or URL');
 
-const envSchema = z.object({
+export const envSchema = z.object({
     NODE_ENV: z.enum(['development', 'production', 'test']),
     PORT: z.coerce.number().int().positive().default(3000),
     DB_URI: dbUriSchema,
@@ -56,8 +56,11 @@ const envSchema = z.object({
     HTTPS: z.boolean().default(false),
 
     // SMS providers
+    SMS_EGYPT_PROVIDER: z.enum(['whysms', 'torvochat']).default('whysms'),
     WHYSMS_API_KEY: z.string().optional(),
     WHYSMS_SENDER_ID: z.string().optional(),
+    TORVOCHAT_API_KEY: z.string().optional(),
+    TORVOCHAT_SENDER_ID: z.string().optional(),
     NOTIFIRE_DEVICE_ID: z.string().optional(),
 
     // Default subscription settings
@@ -70,13 +73,51 @@ const envSchema = z.object({
     FAWATERAK_API_KEY: z.string().optional(),
     FAWATERAK_BASE_URL: z.string().url().optional(),
     calorieninjas_api_key: z.string().min(1, 'calorieninjas_api_key must not be empty'),
+}).superRefine((value, ctx) => {
+    if (value.SMS_EGYPT_PROVIDER === 'whysms' && !value.WHYSMS_API_KEY) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['WHYSMS_API_KEY'],
+            message: 'WHYSMS_API_KEY is required when SMS_EGYPT_PROVIDER=whysms',
+        });
+    }
+
+    if (value.SMS_EGYPT_PROVIDER === 'torvochat' && !value.TORVOCHAT_API_KEY) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['TORVOCHAT_API_KEY'],
+            message: 'TORVOCHAT_API_KEY is required when SMS_EGYPT_PROVIDER=torvochat',
+        });
+    }
 });
 
-const parsedEnv = envSchema.safeParse(process.env);
+export type Env = z.infer<typeof envSchema>;
 
-if (!parsedEnv.success) {
-    console.error('Invalid environment variables:', z.treeifyError(parsedEnv.error));
+export function parseEnv(input: NodeJS.ProcessEnv): Env {
+    const parsedEnv = envSchema.safeParse(input);
+
+    if (!parsedEnv.success) {
+        throw parsedEnv.error;
+    }
+
+    return parsedEnv.data;
+}
+
+function handleInvalidEnv(error: unknown): never {
+    const formatted = error instanceof z.ZodError ? z.treeifyError(error) : error;
+    console.error('Invalid environment variables:', formatted);
+
+    if (process.env.NODE_ENV === 'test') {
+        throw error;
+    }
+
     process.exit(1);
 }
 
-export const env = parsedEnv.data;
+export const env = (() => {
+    try {
+        return parseEnv(process.env);
+    } catch (error) {
+        return handleInvalidEnv(error);
+    }
+})();
