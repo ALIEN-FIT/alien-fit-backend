@@ -12,6 +12,7 @@ import { SubscriptionService } from '../../subscription/v1/subscription.service.
 import { UserProfileService } from '../../user-profile/v1/user-profile.service.js';
 import { UserProfileEntity } from '../../user-profile/v1/model/user-profile.model.js';
 import { otpService } from '../../otp/v1/otp.service.js';
+import { authenticateAccessToken } from '../../../utils/auth.utils.js';
 
 // OTP-based authentication
 export async function sendOTPForAuthController(req: Request, res: Response): Promise<void> {
@@ -111,7 +112,7 @@ export async function refreshTokenController(req: Request, res: Response): Promi
         data: {
             accessToken,
             refreshToken: newRefreshToken,
-            expiresAt: new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
+            expiresAt: accessToken.expiresAt,
         }
     });
 }
@@ -200,7 +201,8 @@ export async function googleMobileAuthController(req: Request, res: Response): P
 
 export async function logoutController(req: Request, res: Response): Promise<void> {
     const { refreshToken } = req.body;
-    await AuthService.logout(refreshToken);
+    const sessionId = await getAuthenticatedSessionId(req);
+    await AuthService.logout({ sessionId, refreshToken });
     res.status(StatusCodes.OK).json({ status: 'success' });
 }
 
@@ -278,4 +280,20 @@ export async function deleteMeController(req: Request, res: Response): Promise<v
     const userId = (req.user as UserEntity).id.toString();
     await UserService.deleteUser(userId);
     res.status(StatusCodes.OK).json({ status: 'success' });
+}
+
+async function getAuthenticatedSessionId(req: Request): Promise<string | undefined> {
+    const authorization = req.headers.authorization;
+    if (!authorization?.startsWith('Bearer ')) {
+        return undefined;
+    }
+
+    const accessToken = authorization.substring(7);
+
+    try {
+        const { session } = await authenticateAccessToken(accessToken);
+        return session.id.toString();
+    } catch {
+        return undefined;
+    }
 }

@@ -1,6 +1,5 @@
-import { DataTypes, Model, Optional } from 'sequelize';
+import { DataTypes, Model } from 'sequelize';
 import { sequelize } from "../../../../database/db-config.js";
-import { UserEntity } from '../../../user/v1/entity/user.entity.js';
 
 
 // ---------- Model ----------
@@ -9,6 +8,8 @@ export class UserSessionEntity extends Model {
     declare userId: string;
     declare refreshToken?: string;
     declare fcmToken?: string;
+    declare deviceId?: string;
+    declare fcmTokenUpdatedAt?: Date;
     declare expiresAt?: Date;
 
     declare readonly createdAt: Date;
@@ -39,6 +40,14 @@ UserSessionEntity.init(
         },
         fcmToken: {
             type: DataTypes.STRING,
+            allowNull: true,
+        },
+        deviceId: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        fcmTokenUpdatedAt: {
+            type: DataTypes.DATE,
             allowNull: true,
         },
         expiresAt: {

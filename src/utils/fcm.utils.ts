@@ -1,7 +1,8 @@
 import { admin } from '../firebase/firebase.js';
 import { errorLogger, infoLogger } from '../config/logger.config.js';
 import { UserSessionEntity } from '../modules/user-session/v1/entity/user-session.entity.js';
-import { Op } from 'sequelize';
+import { Op, col, fn, where } from 'sequelize';
+import { FCM_MESSAGE_TTL_MS, getApnsExpiration, getFcmTokenFreshnessCutoff } from '../config/session.config.js';
 
 const FCM_MULTICAST_LIMIT = 500;
 
@@ -12,8 +13,22 @@ export interface FcmPayload {
 }
 
 export async function getUserFcmTokens(userId: string): Promise<string[]> {
+    const now = new Date();
+    const freshnessCutoff = getFcmTokenFreshnessCutoff(now);
     const sessions = await UserSessionEntity.findAll({
-        where: { userId },
+        where: {
+            userId,
+            fcmToken: { [Op.ne]: null },
+            [Op.or]: [
+                { expiresAt: null },
+                { expiresAt: { [Op.gte]: now } },
+            ],
+            [Op.and]: [
+                where(fn('COALESCE', col('fcmTokenUpdatedAt'), col('updatedAt')), {
+                    [Op.gte]: freshnessCutoff,
+                }),
+            ],
+        },
         attributes: ['id', 'fcmToken'],
     });
 
@@ -46,40 +61,7 @@ export async function sendFcmToTokens(tokens: string[], payload: FcmPayload) {
     for (const group of tokenChunks) {
         let response;
         try {
-            response = await admin.messaging().sendEachForMulticast({
-                tokens: group,
-                notification: {
-                    title: payload.title,
-                    body: payload.body,
-                },
-                data: payload.data,
-                android: {
-                    priority: 'high',
-                    ttl: 2419200000,
-                    notification: {
-                        defaultSound: true,
-                        defaultVibrateTimings: true,
-                    },
-                },
-                apns: {
-                    headers: {
-                        'apns-priority': '10',
-                        'apns-push-type': 'alert',
-                        'apns-expiration': '0',
-                    },
-                    payload: {
-                        aps: {
-                            sound: 'default',
-                            mutableContent: true,
-                            contentAvailable: true,
-                            alert: {
-                                title: payload.title,
-                                body: payload.body,
-                            },
-                        },
-                    },
-                },
-            });
+            response = await admin.messaging().sendEachForMulticast(buildFcmMulticastMessage(group, payload));
         } catch (err) {
             errorLogger.error('FCM multicast failed', err);
             transientErrors.push(err);
@@ -119,4 +101,41 @@ export async function sendFcmToTokens(tokens: string[], payload: FcmPayload) {
 export async function sendFcmToUser(userId: string, payload: FcmPayload) {
     const tokens = await getUserFcmTokens(userId);
     await sendFcmToTokens(tokens, payload);
+}
+
+export function buildFcmMulticastMessage(tokens: string[], payload: FcmPayload, now = new Date()) {
+    return {
+        tokens,
+        notification: {
+            title: payload.title,
+            body: payload.body,
+        },
+        data: payload.data,
+        android: {
+            priority: 'high' as const,
+            ttl: FCM_MESSAGE_TTL_MS,
+            notification: {
+                defaultSound: true,
+                defaultVibrateTimings: true,
+            },
+        },
+        apns: {
+            headers: {
+                'apns-priority': '10',
+                'apns-push-type': 'alert',
+                'apns-expiration': getApnsExpiration(now),
+            },
+            payload: {
+                aps: {
+                    sound: 'default',
+                    mutableContent: true,
+                    contentAvailable: true,
+                    alert: {
+                        title: payload.title,
+                        body: payload.body,
+                    },
+                },
+            },
+        },
+    };
 }

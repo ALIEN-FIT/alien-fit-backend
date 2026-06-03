@@ -121,7 +121,11 @@ export const refreshTokenSchema = Joi.object({
     })
 });
 
-export const logoutSchema = refreshTokenSchema;
+export const logoutSchema = Joi.object({
+    refreshToken: Joi.string().optional().messages({
+        'string.empty': 'Refresh token cannot be empty',
+    }),
+});
 
 export const changePasswordSchema = Joi.object({
     currentPassword: Joi.string().required().messages({

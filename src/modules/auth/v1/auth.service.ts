@@ -10,6 +10,7 @@ import { env } from 'process';
 import { otpService } from '../../otp/v1/otp.service.js';
 import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
 import { AdminSettingsService } from '../../admin-settings/v1/admin-settings.service.js';
+import { isExpiredAt } from '../../../config/session.config.js';
 
 const DEFAULT_FREE_DAYS = parseInt(process.env.DEFAULT_FREE_SUBSCRIPTION_DAYS || '7', 10);
 
@@ -164,17 +165,31 @@ export class AuthService {
     }
 
     static async refreshToken(refreshToken: string): Promise<{ accessToken: IAuthToken; newRefreshToken: string }> {
-        const decoded = jwt.verify(refreshToken, env.REFRESH_TOKEN_PRIVATE_KEY) as {
-            _id: string;
-            tokenId: string;
-        };
+        let decoded: { _id: string; tokenId: string; sessionId: string };
+        try {
+            decoded = jwt.verify(refreshToken, env.REFRESH_TOKEN_PRIVATE_KEY) as {
+                _id: string;
+                tokenId: string;
+                sessionId: string;
+            };
+        } catch {
+            throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Invalid refresh token');
+        }
 
         const session = await UserSessionEntity.findOne({
-            where: { refreshToken },
+            where: {
+                id: decoded.sessionId,
+                refreshToken,
+            },
         });
 
         if (!session) {
             throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Invalid refresh token');
+        }
+
+        if (isExpiredAt(session.expiresAt)) {
+            await session.destroy();
+            throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Refresh token expired');
         }
 
         const user = await UserService.getUserById(decoded._id);
@@ -194,11 +209,25 @@ export class AuthService {
         return { accessToken: newAccessToken, newRefreshToken };
     }
 
-    static async logout(refreshToken: string): Promise<void> {
+    static async logout({ sessionId, refreshToken }: { sessionId?: string; refreshToken?: string }): Promise<void> {
+        if (sessionId) {
+            const session = await UserSessionEntity.findByPk(sessionId);
+            if (!session) {
+                throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Session not found');
+            }
+            await session.destroy();
+            return;
+        }
+
+        if (!refreshToken) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Refresh token is required when no authenticated session is present');
+        }
+
         const session = await UserSessionEntity.findOne({ where: { refreshToken } });
         if (!session) {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Session not found');
         }
+
         await session.destroy();
     }
 
