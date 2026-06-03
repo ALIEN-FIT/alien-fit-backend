@@ -3,73 +3,73 @@
 ## Overview
 Successfully implemented comprehensive OTP-based phone authentication, admin settings management, free subscription support, and enhanced subscription features.
 
-## ✅ Completed Tasks
+## âœ… Completed Tasks
 
 ### 1. OTP Service & SMS Integration
-- ✅ Created SMS service with dual provider support
-  - Egyptian numbers (+20): WhySMS API
+- âœ… Created SMS service with dual provider support
+  - Egyptian numbers (+20): WhySMS or Torvochat API, selected by `SMS_EGYPT_PROVIDER`
   - International numbers: Noti-Fire API
-- ✅ Implemented OTP entity, service, controller, routes
-- ✅ Added OTP validation with security features:
+- âœ… Implemented OTP entity, service, controller, routes
+- âœ… Added OTP validation with security features:
   - 10-minute expiry
   - Maximum 5 verification attempts
   - One-time use with automatic invalidation
   - Rate limiting (5 requests per 15 minutes)
 
 ### 2. Auth Flow Updates
-- ✅ Added phone-based OTP authentication endpoints:
+- âœ… Added phone-based OTP authentication endpoints:
   - Send OTP for authentication
   - Login with OTP
   - Register with OTP
   - Forgot password (with OTP)
   - Reset password (with OTP)
-- ✅ Updated auth service to support OTP flows
-- ✅ Added comprehensive validation schemas
-- ✅ Maintained backward compatibility with legacy auth
+- âœ… Updated auth service to support OTP flows
+- âœ… Added comprehensive validation schemas
+- âœ… Maintained backward compatibility with legacy auth
 
 ### 3. Admin Settings Management
-- ✅ Created admin settings entity and service
-- ✅ Implemented admin endpoints:
+- âœ… Created admin settings entity and service
+- âœ… Implemented admin endpoints:
   - Set default free days
   - Set default training plan
   - Set default diet plan
   - Set user-specific free days
   - Get all settings
-- ✅ Added proper authorization (admin-only)
+- âœ… Added proper authorization (admin-only)
 
 ### 4. Subscription Enhancements
-- ✅ Updated subscription entity:
+- âœ… Updated subscription entity:
   - Added `isFree` field
   - Added `freeDays` field
-- ✅ Implemented free subscription activation
-- ✅ Updated `GET /me` endpoint to include:
+- âœ… Implemented free subscription activation
+- âœ… Updated `GET /me` endpoint to include:
   - `subscriptionType` (free/paid)
   - `subscriptionWarning` (true if < 3 days remaining)
   - Enhanced subscription status
 
 ### 5. User Model Updates
-- ✅ Added `freeDays` field to user entity
-- ✅ Updated user validation schema
-- ✅ Auto-assign free days on registration
+- âœ… Added `freeDays` field to user entity
+- âœ… Updated user validation schema
+- âœ… Auto-assign free days on registration
 
 ### 6. Plan Service Updates
-- ✅ Modified training plan service to return default plan for free users
-- ✅ Modified diet plan service to return default plan for free users
-- ✅ Added `findById` methods to plan repositories
+- âœ… Modified training plan service to return default plan for free users
+- âœ… Modified diet plan service to return default plan for free users
+- âœ… Added `findById` methods to plan repositories
 
 ### 7. Infrastructure & Configuration
-- ✅ Updated environment configuration
-- ✅ Added new routes to app.ts
-- ✅ Created OTP cleanup worker (cron job)
-- ✅ Updated database schema
+- âœ… Updated environment configuration
+- âœ… Added new routes to app.ts
+- âœ… Created OTP cleanup worker (cron job)
+- âœ… Updated database schema
 
 ### 8. Documentation
-- ✅ Created comprehensive implementation guide
-- ✅ Created migration guide with SQL scripts
-- ✅ Created API endpoints documentation
-- ✅ Created .env.example with all variables
+- âœ… Created comprehensive implementation guide
+- âœ… Created migration guide with SQL scripts
+- âœ… Created API endpoints documentation
+- âœ… Created .env.example with all variables
 
-## 📁 Files Created
+## ðŸ“ Files Created
 
 ### Services
 - `src/services/sms/sms.service.ts` - SMS provider integration
@@ -97,7 +97,7 @@ Successfully implemented comprehensive OTP-based phone authentication, admin set
 - `docs/api-endpoints.md` - API endpoint reference
 - `.env.example` - Environment variables template
 
-## 🔧 Files Modified
+## ðŸ”§ Files Modified
 
 ### Core Files
 - `src/app.ts` - Added new routes
@@ -124,7 +124,7 @@ Successfully implemented comprehensive OTP-based phone authentication, admin set
 - `src/modules/plans/diet/v1/diet-plan.service.ts` - Added default plan logic
 - `src/modules/plans/diet/v1/diet-plan.repository.ts` - Added findById method
 
-## 🔒 Security Features Implemented
+## ðŸ”’ Security Features Implemented
 
 1. **Rate Limiting:**
    - OTP send: 5 requests / 15 min
@@ -148,7 +148,7 @@ Successfully implemented comprehensive OTP-based phone authentication, admin set
    - OTP format validation
    - All inputs validated with Joi schemas
 
-## 📊 Database Schema Changes
+## ðŸ“Š Database Schema Changes
 
 ### New Tables
 1. **otps**
@@ -174,19 +174,22 @@ Successfully implemented comprehensive OTP-based phone authentication, admin set
    - Added: isFree (BOOLEAN)
    - Added: freeDays (INTEGER)
 
-## 🌐 Environment Variables Required
+## ðŸŒ Environment Variables Required
 
 ```env
 # SMS Providers
+SMS_EGYPT_PROVIDER=whysms
 WHYSMS_API_KEY=your-key
 WHYSMS_SENDER_ID=AlienFit
+TORVOCHAT_API_KEY=your-torvochat-api-key
+TORVOCHAT_SENDER_ID=TORVOSMS
 NOTIFIRE_DEVICE_ID=your-device-id
 
 # Subscription
 DEFAULT_FREE_SUBSCRIPTION_DAYS=7
 ```
 
-## 🔄 Migration Steps
+## ðŸ”„ Migration Steps
 
 1. **Backup database**
 2. **Run SQL migrations** (see migration-guide.md)
@@ -195,7 +198,7 @@ DEFAULT_FREE_SUBSCRIPTION_DAYS=7
 5. **Restart application**
 6. **Verify functionality**
 
-## ✅ Testing Checklist
+## âœ… Testing Checklist
 
 - [x] OTP sending works for Egyptian numbers
 - [x] OTP sending works for international numbers
@@ -214,7 +217,7 @@ DEFAULT_FREE_SUBSCRIPTION_DAYS=7
 - [x] Paid users get custom plans
 - [x] Subscription warning when < 3 days
 
-## 🚀 Deployment Notes
+## ðŸš€ Deployment Notes
 
 ### Prerequisites
 - PostgreSQL database
@@ -238,7 +241,7 @@ DEFAULT_FREE_SUBSCRIPTION_DAYS=7
 5. Monitor error logs
 6. Check SMS provider usage
 
-## 📈 Performance Considerations
+## ðŸ“ˆ Performance Considerations
 
 1. **OTP Table Growth:**
    - Cleanup cron runs daily at 3 AM
@@ -257,14 +260,14 @@ DEFAULT_FREE_SUBSCRIPTION_DAYS=7
    - Monitor SMS provider usage
    - Set up alerts for high usage
 
-## 🐛 Known Issues / Limitations
+## ðŸ› Known Issues / Limitations
 
 1. SMS providers may have regional restrictions
 2. OTP delivery depends on SMS provider reliability
 3. Rate limiting is IP-based (consider user-based limiting)
 4. Legacy auth still available (may want to deprecate)
 
-## 🔮 Future Enhancements
+## ðŸ”® Future Enhancements
 
 1. SMS provider failover mechanism
 2. Email OTP as alternative
@@ -275,7 +278,7 @@ DEFAULT_FREE_SUBSCRIPTION_DAYS=7
 7. OTP via WhatsApp
 8. SMS templates for multiple languages
 
-## 📝 Notes
+## ðŸ“ Notes
 
 - All legacy authentication methods remain functional
 - Backward compatible - no breaking changes
@@ -283,7 +286,7 @@ DEFAULT_FREE_SUBSCRIPTION_DAYS=7
 - New users automatically get free subscription
 - Admin can override free days per user
 
-## 🆘 Support & Troubleshooting
+## ðŸ†˜ Support & Troubleshooting
 
 See detailed documentation:
 - `docs/auth-flow-implementation.md` - Full implementation details
@@ -297,20 +300,20 @@ For issues:
 4. Test with provided cURL examples
 5. Contact development team
 
-## ✨ Success Criteria Met
+## âœ¨ Success Criteria Met
 
-✅ Phone number authentication with OTP
-✅ SMS sent via dual providers (Egyptian/International)
-✅ OTP verification before user creation
-✅ Forgot password with OTP
-✅ Rate limiting and security
-✅ Admin can set user free days
-✅ Admin can set default plans
-✅ New users get free subscription
-✅ GET /me returns subscription type
-✅ Subscription warning when < 3 days
-✅ Free users get default plans
-✅ Comprehensive documentation
+âœ… Phone number authentication with OTP
+âœ… SMS sent via env-selectable Egypt provider plus international provider
+âœ… OTP verification before user creation
+âœ… Forgot password with OTP
+âœ… Rate limiting and security
+âœ… Admin can set user free days
+âœ… Admin can set default plans
+âœ… New users get free subscription
+âœ… GET /me returns subscription type
+âœ… Subscription warning when < 3 days
+âœ… Free users get default plans
+âœ… Comprehensive documentation
 
 ---
 

@@ -74,8 +74,11 @@ Add these to your `.env` file:
 
 ```env
 # SMS Providers
+SMS_EGYPT_PROVIDER=whysms
 WHYSMS_API_KEY=your-whysms-api-key
 WHYSMS_SENDER_ID=AlienFit
+TORVOCHAT_API_KEY=your-torvochat-api-key
+TORVOCHAT_SENDER_ID=TORVOSMS
 NOTIFIRE_DEVICE_ID=your-notifire-device-id
 
 # Default subscription
@@ -186,7 +189,8 @@ psql -U your_user alienfit < backup_YYYYMMDD.sql
 
 ### Issue 1: OTP not sending
 - **Solution**: Check SMS provider credentials in `.env`
-- Verify `WHYSMS_API_KEY` and `NOTIFIRE_DEVICE_ID` are correct
+- Verify `SMS_EGYPT_PROVIDER` is set correctly
+- Verify the selected Egypt provider credential (`WHYSMS_API_KEY` or `TORVOCHAT_API_KEY`) and `NOTIFIRE_DEVICE_ID` are correct
 - Check application logs for specific SMS errors
 
 ### Issue 2: "Column does not exist" errors

@@ -8,7 +8,7 @@ This implementation adds comprehensive OTP-based phone authentication, admin set
 ### 1. OTP-Based Phone Authentication
 - Phone number-only authentication (primary method)
 - SMS OTP sent via two providers:
-  - **Egyptian numbers** (+20): WhySMS API
+  - **Egyptian numbers** (+20): WhySMS or Torvochat API, selected by `SMS_EGYPT_PROVIDER`
   - **International numbers**: Noti-Fire API
 - OTP verification before user creation
 - Rate limiting on OTP endpoints (5 requests per 15 minutes)
@@ -141,7 +141,7 @@ Content-Type: application/json
   "recommendedWaterIntakeMl": 2000,  // optional
   "meals": [
     {
-      "mealName": "Meal 1 (Light Iftar – Pre Workout)",
+      "mealName": "Meal 1 (Light Iftar â€“ Pre Workout)",
       "order": 1,
       "text": "160g cooked white rice\n1 medium banana\n1 scoop whey protein\n2 medium dates\n\nCalories: 600 kcal"
     },
@@ -271,9 +271,16 @@ CREATE TABLE admin_settings (
 Add to your `.env` file:
 
 ```env
-# SMS Provider - WhySMS (Egyptian numbers)
+# SMS Provider - Egypt selector
+SMS_EGYPT_PROVIDER=whysms
+
+# SMS Provider - WhySMS (Egypt option)
 WHYSMS_API_KEY=49|LNFe8WJ7CPtvl2mzowAB4ll4enbFR0XGgnQh2qWY
 WHYSMS_SENDER_ID=AlienFit
+
+# SMS Provider - Torvochat (Egypt option)
+TORVOCHAT_API_KEY=your_torvochat_api_key
+TORVOCHAT_SENDER_ID=TORVOSMS
 
 # SMS Provider - Noti-Fire (International numbers)
 NOTIFIRE_DEVICE_ID=test-123-456-789
@@ -304,15 +311,15 @@ DEFAULT_FREE_SUBSCRIPTION_DAYS=7
 ## Free Subscription Flow
 
 1. **User Registration**:
-   - User requests OTP → OTP sent to phone
+   - User requests OTP â†’ OTP sent to phone
    - User verifies OTP with registration data
    - System creates user account
    - System automatically creates free subscription (7 days default)
 
 2. **Plan Access for Free Users**:
    - When free user fetches training/diet plan:
-     - If default plan is configured → Returns default plan
-     - If no default plan → Returns 404 (user needs custom plan)
+     - If default plan is configured â†’ Returns default plan
+     - If no default plan â†’ Returns 404 (user needs custom plan)
 
 3. **Subscription Warning**:
    - `subscriptionWarning: true` when < 3 days remaining
