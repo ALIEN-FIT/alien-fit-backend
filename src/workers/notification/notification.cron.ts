@@ -375,8 +375,8 @@ export function startNotificationCron() {
 
     cron.schedule('30 3 * * *', async () => {
         try {
-            const { clearedTokens, deletedSessions } = await UserSessionService.cleanupExpiredSessionsAndStaleFcmTokens();
-            infoLogger.info(`User session cleanup finished: cleared ${clearedTokens} stale FCM tokens, deleted ${deletedSessions} expired sessions`);
+            const { deletedSessions } = await UserSessionService.cleanupExpiredSessions();
+            infoLogger.info(`User session cleanup finished: deleted ${deletedSessions} expired sessions without an FCM token`);
         } catch (err) {
             errorLogger.error('User session cleanup failed', err);
         }

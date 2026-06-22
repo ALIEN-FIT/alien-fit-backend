@@ -1,8 +1,8 @@
 import { admin } from '../firebase/firebase.js';
 import { errorLogger, infoLogger } from '../config/logger.config.js';
 import { UserSessionEntity } from '../modules/user-session/v1/entity/user-session.entity.js';
-import { Op, col, fn, where } from 'sequelize';
-import { FCM_MESSAGE_TTL_MS, getApnsExpiration, getFcmTokenFreshnessCutoff } from '../config/session.config.js';
+import { Op } from 'sequelize';
+import { FCM_MESSAGE_TTL_MS, getApnsExpiration } from '../config/session.config.js';
 
 const FCM_MULTICAST_LIMIT = 500;
 
@@ -13,21 +13,15 @@ export interface FcmPayload {
 }
 
 export async function getUserFcmTokens(userId: string): Promise<string[]> {
-    const now = new Date();
-    const freshnessCutoff = getFcmTokenFreshnessCutoff(now);
+    // Push delivery is intentionally NOT gated on session expiry or token age.
+    // An FCM token stays valid on the device regardless of whether the user is
+    // active, logged in, or has a live session — so we deliver to any stored
+    // token. Dead tokens are pruned only when FCM itself reports them invalid
+    // (see sendFcmToTokens), never by guessing from timestamps.
     const sessions = await UserSessionEntity.findAll({
         where: {
             userId,
             fcmToken: { [Op.ne]: null },
-            [Op.or]: [
-                { expiresAt: null },
-                { expiresAt: { [Op.gte]: now } },
-            ],
-            [Op.and]: [
-                where(fn('COALESCE', col('fcmTokenUpdatedAt'), col('updatedAt')), {
-                    [Op.gte]: freshnessCutoff,
-                }),
-            ],
         },
         attributes: ['id', 'fcmToken'],
     });
