@@ -225,8 +225,10 @@ function buildAuthScript() {
         const { errorLogger, infoLogger, debugLogger, httpLogger } = await import('./src/config/logger.config.ts');
         const { notificationQueue } = await import('./src/workers/notification/notification.queue.ts');
         const { UserSessionEntity } = await import('./src/modules/user-session/v1/entity/user-session.entity.ts');
+        const { UserEntity } = await import('./src/modules/user/v1/entity/user.entity.ts');
         const { UserService } = await import('./src/modules/user/v1/user.service.ts');
         const { authenticateAccessToken } = await import('./src/utils/auth.utils.ts');
+        const { hashPassword } = await import('./src/utils/password.utils.ts');
         const { AuthService } = await import('./src/modules/auth/v1/auth.service.ts');
         const { logoutController } = await import('./src/modules/auth/v1/auth.controller.ts');
 
@@ -326,6 +328,47 @@ function buildAuthScript() {
                     await assert.rejects(() => authenticateAccessToken(accessToken), /Session expired/);
                 });
                 assert.equal(destroyed, true);
+            }
+
+            {
+                const destroyCalls = [];
+                const createCalls = [];
+                const hashedPassword = await hashPassword('Ss123456*');
+
+                await withStubs([
+                    [UserEntity, 'scope', () => ({
+                        findOne: async ({ where }) => {
+                            assert.equal(where.provider, '+201000000000');
+                            return {
+                                id: 'user-login',
+                                isBlocked: false,
+                                password: hashedPassword,
+                                generateAuthToken: (sessionId) => ({ token: `access-${sessionId}` }),
+                                generateRefreshToken: async (sessionId) => `refresh-${sessionId}`,
+                            };
+                        },
+                    })],
+                    [UserSessionEntity, 'destroy', async (options) => {
+                        destroyCalls.push(options);
+                        return 1;
+                    }],
+                    [UserSessionEntity, 'create', async (payload) => {
+                        createCalls.push(payload);
+                        return { id: 'session-login' };
+                    }],
+                ], async () => {
+                    const result = await AuthService.login('+201000000000', 'Ss123456*', ' device-login ');
+
+                    assert.equal(result.accessToken.token, 'access-session-login');
+                    assert.equal(result.refreshToken, 'refresh-session-login');
+                });
+
+                assert.equal(destroyCalls[0].where.userId, 'user-login');
+                assert.equal(destroyCalls[0].where.deviceId, 'device-login');
+                assert.deepEqual(createCalls[0], {
+                    userId: 'user-login',
+                    deviceId: 'device-login',
+                });
             }
 
             console.log('OK');

@@ -26,9 +26,9 @@ export async function sendOTPForAuthController(req: Request, res: Response): Pro
 }
 
 export async function loginWithOTPController(req: Request, res: Response): Promise<void> {
-    const { phone, otp } = req.body;
+    const { phone, otp, deviceId } = req.body;
 
-    const { user, accessToken, refreshToken } = await AuthService.loginWithOTP(phone, otp);
+    const { user, accessToken, refreshToken } = await AuthService.loginWithOTP(phone, otp, deviceId);
 
     res.status(StatusCodes.OK).json({
         status: 'success',
@@ -41,12 +41,12 @@ export async function loginWithOTPController(req: Request, res: Response): Promi
 }
 
 export async function registerWithOTPController(req: Request, res: Response): Promise<void> {
-    const { phone, otp, name, ...userData } = req.body;
+    const { phone, otp, name, deviceId, ...userData } = req.body;
 
     const { user, accessToken, refreshToken } = await AuthService.registerWithOTP(phone, otp, {
         name,
         ...userData,
-    });
+    }, deviceId);
 
     res.status(StatusCodes.CREATED).json({
         status: 'success',
@@ -81,9 +81,9 @@ export async function resetPasswordController(req: Request, res: Response): Prom
 
 // Legacy authentication (kept for backward compatibility)
 export async function loginController(req: Request, res: Response): Promise<void> {
-    const { provider, password } = req.body;
+    const { provider, password, deviceId } = req.body;
 
-    const { user, accessToken, refreshToken } = await AuthService.login(provider, password);
+    const { user, accessToken, refreshToken } = await AuthService.login(provider, password, deviceId);
 
     res.status(StatusCodes.OK).json({
         status: 'success',

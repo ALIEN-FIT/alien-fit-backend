@@ -16,7 +16,7 @@ const DEFAULT_FREE_DAYS = parseInt(process.env.DEFAULT_FREE_SUBSCRIPTION_DAYS ||
 
 export class AuthService {
     // Phone + OTP based login/registration
-    static async loginWithOTP(phone: string, otp: string): Promise<{ user: UserEntity; accessToken: IAuthToken; refreshToken: string; isNewUser: boolean }> {
+    static async loginWithOTP(phone: string, otp: string, deviceId?: string): Promise<{ user: UserEntity; accessToken: IAuthToken; refreshToken: string; isNewUser: boolean }> {
         // Verify OTP
         await otpService.verifyOTP(phone, otp);
 
@@ -42,7 +42,7 @@ export class AuthService {
             await user.save();
         }
 
-        const userSession = await UserSessionEntity.create({ userId: user.id });
+        const userSession = await this.createSessionForUser(user.id.toString(), deviceId);
 
         const accessToken = user.generateAuthToken(userSession.id.toString());
         const refreshToken = await user.generateRefreshToken(userSession.id.toString());
@@ -51,7 +51,7 @@ export class AuthService {
     }
 
     // Register with phone, OTP and user data
-    static async registerWithOTP(phone: string, otp: string, userData: Partial<UserEntity>): Promise<{ user: UserEntity; accessToken: IAuthToken; refreshToken: string }> {
+    static async registerWithOTP(phone: string, otp: string, userData: Partial<UserEntity>, deviceId?: string): Promise<{ user: UserEntity; accessToken: IAuthToken; refreshToken: string }> {
         // Verify OTP
         await otpService.verifyOTP(phone, otp);
 
@@ -83,7 +83,7 @@ export class AuthService {
         await SubscriptionService.activateFreeSubscription(user.id.toString(), freeDays);
 
         // Create session
-        const userSession = await UserSessionEntity.create({ userId: user.id });
+        const userSession = await this.createSessionForUser(user.id.toString(), deviceId);
 
         const accessToken = user.generateAuthToken(userSession.id.toString());
         const refreshToken = await user.generateRefreshToken(userSession.id.toString());
@@ -92,7 +92,7 @@ export class AuthService {
     }
 
     // Legacy login with email/phone + password (kept for backward compatibility)
-    static async login(provider: string, password: string): Promise<{ user: UserEntity; accessToken: IAuthToken; refreshToken: string }> {
+    static async login(provider: string, password: string, deviceId?: string): Promise<{ user: UserEntity; accessToken: IAuthToken; refreshToken: string }> {
         // Use the custom scope to include password
         const user = await UserEntity.scope('withPassword').findOne({ where: { provider } });
         if (!user) {
@@ -112,7 +112,7 @@ export class AuthService {
             throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Invalid credentials');
         }
 
-        const userSession = await UserSessionEntity.create({ userId: user.id });
+        const userSession = await this.createSessionForUser(user.id.toString(), deviceId);
 
         const accessToken = user.generateAuthToken(userSession.id.toString());
         const refreshToken = await user.generateRefreshToken(userSession.id.toString());
@@ -253,5 +253,23 @@ export class AuthService {
 
         user.password = newPassword;
         await user.save();
+    }
+
+    private static async createSessionForUser(userId: string, deviceId?: string): Promise<UserSessionEntity> {
+        const normalizedDeviceId = deviceId?.trim() || undefined;
+
+        if (normalizedDeviceId) {
+            await UserSessionEntity.destroy({
+                where: {
+                    userId,
+                    deviceId: normalizedDeviceId,
+                },
+            });
+        }
+
+        return UserSessionEntity.create({
+            userId,
+            deviceId: normalizedDeviceId,
+        });
     }
 }
