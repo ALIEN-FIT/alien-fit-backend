@@ -21,11 +21,14 @@ export interface BroadcastNotificationJobData {
 }
 
 export async function enqueueUserNotification(data: SendNotificationJobData) {
+    // attempts: 1 — the worker (handleSend) is responsible for tolerating push
+    // failures itself. Whole-job retries are unsafe here because they re-create
+    // the in-app notification AND re-deliver the push to devices that already
+    // got it, which was the root cause of the duplicate (5x) notifications.
     await notificationQueue.add('send', data, {
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 1000 },
+        attempts: 1,
         removeOnComplete: true,
-        removeOnFail: false,
+        removeOnFail: true,
     });
 }
 

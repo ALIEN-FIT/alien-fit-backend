@@ -14,6 +14,9 @@ const CONCURRENCY = 10;
 async function handleSend(job: Job<SendNotificationJobData>) {
     const payload = job.data;
 
+    // Persist the in-app notification exactly once. Even if this job is ever
+    // retried, we must not create a second row or fire a second push for the
+    // same logical notification.
     const notification = await NotificationRepository.create({
         userId: payload.userId,
         byUserId: payload.byUserId,
@@ -22,14 +25,32 @@ async function handleSend(job: Job<SendNotificationJobData>) {
         body: payload.body,
     });
 
-    await sendFcmToUser(payload.userId, {
-        title: payload.title,
-        body: payload.body,
-        data: {
-            type: payload.type,
-            notificationId: notification.id,
-        },
-    });
+    // The push is best-effort and self-contained: sendFcmToUser prunes invalid
+    // tokens and reports (never throws) transient failures. We deliberately do
+    // NOT rethrow here, so a partial FCM failure can never cause BullMQ to retry
+    // the job and re-deliver to tokens that already received the notification.
+    try {
+        const result = await sendFcmToUser(payload.userId, {
+            title: payload.title,
+            body: payload.body,
+            data: {
+                type: payload.type,
+                notificationId: notification.id,
+            },
+        });
+
+        if (result.transientFailures > 0) {
+            infoLogger.info('Notification push had transient failures (not retried)', {
+                jobId: job.id,
+                userId: payload.userId,
+                ...result,
+            });
+        }
+    } catch (err) {
+        // Hard failure (e.g. FCM transport down). Log and swallow: retrying the
+        // whole job would duplicate the push for already-delivered devices.
+        errorLogger.error('Notification push failed', { jobId: job.id, userId: payload.userId, err });
+    }
 }
 
 async function handleBroadcast(job: Job<BroadcastNotificationJobData>) {
@@ -64,6 +85,13 @@ async function handleBroadcast(job: Job<BroadcastNotificationJobData>) {
             type: base.type,
             title: base.title,
             body: base.body,
+        },
+        // Same rule as enqueueUserNotification: never whole-job retry a send,
+        // otherwise the push is re-delivered to already-notified devices.
+        opts: {
+            attempts: 1,
+            removeOnComplete: true,
+            removeOnFail: true,
         },
     }));
 
