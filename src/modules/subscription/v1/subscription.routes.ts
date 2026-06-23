@@ -13,6 +13,7 @@ import {
     defrostSubscriptionController,
     adminDefrostSubscriptionController,
     adminSetSubscriptionDatesController,
+    requestProfileUpdateController,
     createSubscriptionCheckoutController,
     fawaterakWebhookController,
 } from './subscription.controller.js';
@@ -24,6 +25,7 @@ import {
     subscriptionDeclineFreezeRequestSchema,
     subscriptionAdminDefrostSchema,
     subscriptionAdminSetDatesSchema,
+    subscriptionUserParamSchema,
     subscriptionCheckoutSchema,
     fawaterakWebhookSchema,
 } from './subscription.validation.js';
@@ -95,6 +97,15 @@ subscriptionRouterV1.patch(
     authorizeRoles(Roles.ADMIN),
     validateRequest(subscriptionAdminSetDatesSchema),
     adminSetSubscriptionDatesController,
+);
+
+// Admin: force a user to re-answer the profile questions on next app open
+subscriptionRouterV1.post(
+    '/request-profile-update/:userId',
+    auth,
+    authorizeRoles(Roles.ADMIN),
+    validateRequest(subscriptionUserParamSchema),
+    requestProfileUpdateController,
 );
 
 // User checkout

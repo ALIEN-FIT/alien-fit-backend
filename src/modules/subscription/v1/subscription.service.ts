@@ -28,11 +28,14 @@ interface SubscriptionStatus {
     subscription: SubscriptionEntity | null;
 }
 
-function calculateNextProfileDue(lastUpdate: Date | null): Date | null {
-    if (!lastUpdate) {
-        return null;
-    }
-    return addDays(lastUpdate, 30);
+// Profile updates are no longer scheduled automatically every 30 days.
+// Once a user completes their profile, `profileUpdateRequired` stays false
+// forever. To force a specific user to re-answer the profile questions, set
+// their subscription's `nextProfileUpdateDue` to a past date directly in the
+// database (e.g. NOW()); the next cron run will raise a PlanUpdateRequest and
+// `profileUpdateRequired` will report true until they update again.
+function calculateNextProfileDue(_lastUpdate: Date | null): Date | null {
+    return null;
 }
 
 function computeHasRemainingTime(subscription: SubscriptionEntity | null, referenceDate = new Date()): boolean {
@@ -479,6 +482,22 @@ export class SubscriptionService {
             isSubscribed: isActive,
             isActive,
         });
+        return subscription;
+    }
+
+    // Admin-triggered: force a specific user to re-answer the profile questions.
+    // Marks the profile update as due now, so `profileUpdateRequired` reports true
+    // for this user until they update again (after which it returns to false).
+    // The notification cron will also raise a PlanUpdateRequest for the trainer.
+    static async requestProfileUpdate(userId: string, dueDate = new Date()): Promise<SubscriptionEntity> {
+        await UserService.getUserById(userId);
+
+        const subscription = await SubscriptionRepository.findByUserId(userId);
+        if (!subscription) {
+            throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Subscription not found for this user');
+        }
+
+        await subscription.update({ nextProfileUpdateDue: dueDate });
         return subscription;
     }
 }

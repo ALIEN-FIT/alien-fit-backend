@@ -128,6 +128,17 @@ export async function adminSetSubscriptionDatesController(req: Request, res: Res
     });
 }
 
+export async function requestProfileUpdateController(req: Request, res: Response): Promise<void> {
+    const { userId } = req.params;
+    const subscription = await SubscriptionService.requestProfileUpdate(userId);
+
+    res.status(StatusCodes.OK).json({
+        status: 'success',
+        message: 'Profile update requested for user',
+        data: { subscription },
+    });
+}
+
 export async function createSubscriptionCheckoutController(req: Request, res: Response): Promise<void> {
     const userId = req.user!.id.toString();
     const { packageId, planType, currency, redirectionUrls } = req.body;
