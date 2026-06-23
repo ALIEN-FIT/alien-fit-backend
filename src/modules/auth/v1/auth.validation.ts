@@ -29,6 +29,7 @@ export const loginWithOTPSchema = Joi.object({
             'string.pattern.base': 'OTP must contain only digits',
             'any.required': 'OTP is required',
         }),
+    deviceId: Joi.string().trim().max(255).optional(),
 });
 
 export const registerWithOTPSchema = Joi.object({
@@ -57,6 +58,7 @@ export const registerWithOTPSchema = Joi.object({
     weight: userValidationSchema.extract('weight'),
     age: userValidationSchema.extract('age'),
     gender: userValidationSchema.extract('gender'),
+    deviceId: Joi.string().trim().max(255).optional(),
 });
 
 export const forgotPasswordSchema = Joi.object({
@@ -101,7 +103,8 @@ export const loginSchema = Joi.object({
     password: Joi.string().required().messages({
         'any.required': 'Password is required',
         'string.empty': 'Password cannot be empty'
-    })
+    }),
+    deviceId: Joi.string().trim().max(255).optional()
 });
 
 export const registerSchema = userValidationSchema
@@ -121,7 +124,11 @@ export const refreshTokenSchema = Joi.object({
     })
 });
 
-export const logoutSchema = refreshTokenSchema;
+export const logoutSchema = Joi.object({
+    refreshToken: Joi.string().optional().messages({
+        'string.empty': 'Refresh token cannot be empty',
+    }),
+});
 
 export const changePasswordSchema = Joi.object({
     currentPassword: Joi.string().required().messages({

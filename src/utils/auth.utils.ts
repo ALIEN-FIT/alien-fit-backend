@@ -5,6 +5,7 @@ import { HttpResponseError } from './appError.js';
 import { UserService } from '../modules/user/v1/user.service.js';
 import { UserSessionEntity } from '../modules/user-session/v1/entity/user-session.entity.js';
 import { UserEntity } from '../modules/user/v1/entity/user.entity.js';
+import { isExpiredAt } from '../config/session.config.js';
 
 interface AccessTokenPayload {
     _id: string;
@@ -36,6 +37,11 @@ export async function authenticateAccessToken(accessToken?: string): Promise<Aut
 
     if (!session) {
         throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Session not found');
+    }
+
+    if (isExpiredAt(session.expiresAt)) {
+        await session.destroy();
+        throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Session expired');
     }
 
     if (session.userId !== user.id) {

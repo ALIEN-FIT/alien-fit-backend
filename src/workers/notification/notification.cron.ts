@@ -12,6 +12,7 @@ import { NotificationEntity } from '../../modules/notification/v1/entity/notific
 import { UserProfileEntity } from '../../modules/user-profile/v1/model/user-profile.model.js';
 import { PlanUpdateRequestService } from '../../modules/requests/v1/plan-update-request.service.js';
 import { getCapabilitiesForPlanType } from '../../modules/subscription-packages/v1/subscription-plan-type.js';
+import { UserSessionService } from '../../modules/user-session/v1/user-session.service.js';
 
 function startOfDayUTC(date: Date) {
     const d = new Date(date);
@@ -371,4 +372,15 @@ export function startNotificationCron() {
     });
 
     infoLogger.info('Notification cron scheduled (09:00 and 21:00)');
+
+    cron.schedule('30 3 * * *', async () => {
+        try {
+            const { deletedSessions } = await UserSessionService.cleanupExpiredSessions();
+            infoLogger.info(`User session cleanup finished: deleted ${deletedSessions} expired sessions without an FCM token`);
+        } catch (err) {
+            errorLogger.error('User session cleanup failed', err);
+        }
+    });
+
+    infoLogger.info('User session cleanup scheduled (03:30)');
 }

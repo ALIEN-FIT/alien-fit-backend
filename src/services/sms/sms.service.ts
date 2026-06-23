@@ -72,6 +72,7 @@ export class WhySMSProvider implements SMSProvider {
     ) { }
 
     async send(phone: string, message: string): Promise<boolean> {
+        console.log(`Sending SMS via WhySMS to ${phone}: ${message}`);
         try {
             const response = await this.post(
                 this.apiUrl,
@@ -114,6 +115,7 @@ export class TorvochatProvider implements SMSProvider {
     ) { }
 
     async send(phone: string, message: string): Promise<boolean> {
+        console.log(`Sending SMS via Torvochat to ${phone}: ${message}`);
         const normalizedPhone = this.normalizePhone(phone);
 
         try {

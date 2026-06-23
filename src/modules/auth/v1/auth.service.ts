@@ -10,12 +10,13 @@ import { env } from 'process';
 import { otpService } from '../../otp/v1/otp.service.js';
 import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
 import { AdminSettingsService } from '../../admin-settings/v1/admin-settings.service.js';
+import { isExpiredAt } from '../../../config/session.config.js';
 
 const DEFAULT_FREE_DAYS = parseInt(process.env.DEFAULT_FREE_SUBSCRIPTION_DAYS || '7', 10);
 
 export class AuthService {
     // Phone + OTP based login/registration
-    static async loginWithOTP(phone: string, otp: string): Promise<{ user: UserEntity; accessToken: IAuthToken; refreshToken: string; isNewUser: boolean }> {
+    static async loginWithOTP(phone: string, otp: string, deviceId?: string): Promise<{ user: UserEntity; accessToken: IAuthToken; refreshToken: string; isNewUser: boolean }> {
         // Verify OTP
         await otpService.verifyOTP(phone, otp);
 
@@ -41,7 +42,7 @@ export class AuthService {
             await user.save();
         }
 
-        const userSession = await UserSessionEntity.create({ userId: user.id });
+        const userSession = await this.createSessionForUser(user.id.toString(), deviceId);
 
         const accessToken = user.generateAuthToken(userSession.id.toString());
         const refreshToken = await user.generateRefreshToken(userSession.id.toString());
@@ -50,7 +51,7 @@ export class AuthService {
     }
 
     // Register with phone, OTP and user data
-    static async registerWithOTP(phone: string, otp: string, userData: Partial<UserEntity>): Promise<{ user: UserEntity; accessToken: IAuthToken; refreshToken: string }> {
+    static async registerWithOTP(phone: string, otp: string, userData: Partial<UserEntity>, deviceId?: string): Promise<{ user: UserEntity; accessToken: IAuthToken; refreshToken: string }> {
         // Verify OTP
         await otpService.verifyOTP(phone, otp);
 
@@ -82,7 +83,7 @@ export class AuthService {
         await SubscriptionService.activateFreeSubscription(user.id.toString(), freeDays);
 
         // Create session
-        const userSession = await UserSessionEntity.create({ userId: user.id });
+        const userSession = await this.createSessionForUser(user.id.toString(), deviceId);
 
         const accessToken = user.generateAuthToken(userSession.id.toString());
         const refreshToken = await user.generateRefreshToken(userSession.id.toString());
@@ -91,7 +92,7 @@ export class AuthService {
     }
 
     // Legacy login with email/phone + password (kept for backward compatibility)
-    static async login(provider: string, password: string): Promise<{ user: UserEntity; accessToken: IAuthToken; refreshToken: string }> {
+    static async login(provider: string, password: string, deviceId?: string): Promise<{ user: UserEntity; accessToken: IAuthToken; refreshToken: string }> {
         // Use the custom scope to include password
         const user = await UserEntity.scope('withPassword').findOne({ where: { provider } });
         if (!user) {
@@ -111,7 +112,7 @@ export class AuthService {
             throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Invalid credentials');
         }
 
-        const userSession = await UserSessionEntity.create({ userId: user.id });
+        const userSession = await this.createSessionForUser(user.id.toString(), deviceId);
 
         const accessToken = user.generateAuthToken(userSession.id.toString());
         const refreshToken = await user.generateRefreshToken(userSession.id.toString());
@@ -164,17 +165,31 @@ export class AuthService {
     }
 
     static async refreshToken(refreshToken: string): Promise<{ accessToken: IAuthToken; newRefreshToken: string }> {
-        const decoded = jwt.verify(refreshToken, env.REFRESH_TOKEN_PRIVATE_KEY) as {
-            _id: string;
-            tokenId: string;
-        };
+        let decoded: { _id: string; tokenId: string; sessionId: string };
+        try {
+            decoded = jwt.verify(refreshToken, env.REFRESH_TOKEN_PRIVATE_KEY) as {
+                _id: string;
+                tokenId: string;
+                sessionId: string;
+            };
+        } catch {
+            throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Invalid refresh token');
+        }
 
         const session = await UserSessionEntity.findOne({
-            where: { refreshToken },
+            where: {
+                id: decoded.sessionId,
+                refreshToken,
+            },
         });
 
         if (!session) {
             throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Invalid refresh token');
+        }
+
+        if (isExpiredAt(session.expiresAt)) {
+            await session.destroy();
+            throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Refresh token expired');
         }
 
         const user = await UserService.getUserById(decoded._id);
@@ -194,11 +209,25 @@ export class AuthService {
         return { accessToken: newAccessToken, newRefreshToken };
     }
 
-    static async logout(refreshToken: string): Promise<void> {
+    static async logout({ sessionId, refreshToken }: { sessionId?: string; refreshToken?: string }): Promise<void> {
+        if (sessionId) {
+            const session = await UserSessionEntity.findByPk(sessionId);
+            if (!session) {
+                throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Session not found');
+            }
+            await session.destroy();
+            return;
+        }
+
+        if (!refreshToken) {
+            throw new HttpResponseError(StatusCodes.BAD_REQUEST, 'Refresh token is required when no authenticated session is present');
+        }
+
         const session = await UserSessionEntity.findOne({ where: { refreshToken } });
         if (!session) {
             throw new HttpResponseError(StatusCodes.NOT_FOUND, 'Session not found');
         }
+
         await session.destroy();
     }
 
@@ -224,5 +253,23 @@ export class AuthService {
 
         user.password = newPassword;
         await user.save();
+    }
+
+    private static async createSessionForUser(userId: string, deviceId?: string): Promise<UserSessionEntity> {
+        const normalizedDeviceId = deviceId?.trim() || undefined;
+
+        if (normalizedDeviceId) {
+            await UserSessionEntity.destroy({
+                where: {
+                    userId,
+                    deviceId: normalizedDeviceId,
+                },
+            });
+        }
+
+        return UserSessionEntity.create({
+            userId,
+            deviceId: normalizedDeviceId,
+        });
     }
 }
