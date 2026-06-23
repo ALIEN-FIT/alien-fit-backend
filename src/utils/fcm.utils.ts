@@ -12,6 +12,13 @@ export interface FcmPayload {
     data?: Record<string, string>;
 }
 
+export interface FcmSendResult {
+    successCount: number;
+    failureCount: number;
+    invalidRemoved: number;
+    transientFailures: number;
+}
+
 export async function getUserFcmTokens(userId: string): Promise<string[]> {
     // Push delivery is intentionally NOT gated on session expiry or token age.
     // An FCM token stays valid on the device regardless of whether the user is
@@ -41,26 +48,39 @@ function chunk<T>(items: T[], size: number) {
     return out;
 }
 
-export async function sendFcmToTokens(tokens: string[], payload: FcmPayload) {
+/**
+ * Sends a push to the given tokens. This NEVER throws on per-token / transient
+ * FCM failures: the push has already been attempted for the healthy tokens, so
+ * letting the error bubble up would make BullMQ retry the whole job and
+ * re-deliver to those same healthy tokens (the cause of the duplicate-notification
+ * bug). Invalid tokens are pruned; transient failures are logged and reported
+ * back in the result for the caller to decide what to do.
+ */
+export async function sendFcmToTokens(tokens: string[], payload: FcmPayload): Promise<FcmSendResult> {
+    const result: FcmSendResult = { successCount: 0, failureCount: 0, invalidRemoved: 0, transientFailures: 0 };
+
     const uniqueTokens = Array.from(new Set(tokens.map((token) => token.trim()).filter((token) => token.length > 0)));
 
     if (uniqueTokens.length === 0) {
-        return;
+        return result;
     }
 
     const tokenChunks = chunk(uniqueTokens, FCM_MULTICAST_LIMIT);
-
-    const transientErrors: unknown[] = [];
 
     for (const group of tokenChunks) {
         let response;
         try {
             response = await admin.messaging().sendEachForMulticast(buildFcmMulticastMessage(group, payload));
         } catch (err) {
+            // Whole-chunk transport error: nothing was delivered for this chunk.
             errorLogger.error('FCM multicast failed', err);
-            transientErrors.push(err);
+            result.failureCount += group.length;
+            result.transientFailures += group.length;
             continue;
         }
+
+        result.successCount += response.successCount;
+        result.failureCount += response.failureCount;
 
         if (response.failureCount > 0) {
             const invalidTokens: string[] = [];
@@ -72,7 +92,7 @@ export async function sendFcmToTokens(tokens: string[], payload: FcmPayload) {
                         invalidTokens.push(group[idx]);
                     } else {
                         errorLogger.error('FCM send error', r.error);
-                        transientErrors.push(r.error);
+                        result.transientFailures += 1;
                     }
                 }
             });
@@ -82,19 +102,18 @@ export async function sendFcmToTokens(tokens: string[], payload: FcmPayload) {
                     { fcmToken: null },
                     { where: { fcmToken: { [Op.in]: invalidTokens } } }
                 );
+                result.invalidRemoved += invalidTokens.length;
                 infoLogger.info(`Removed ${invalidTokens.length} invalid FCM tokens`);
             }
         }
     }
 
-    if (transientErrors.length > 0) {
-        throw new Error(`FCM send had ${transientErrors.length} transient failures`);
-    }
+    return result;
 }
 
-export async function sendFcmToUser(userId: string, payload: FcmPayload) {
+export async function sendFcmToUser(userId: string, payload: FcmPayload): Promise<FcmSendResult> {
     const tokens = await getUserFcmTokens(userId);
-    await sendFcmToTokens(tokens, payload);
+    return sendFcmToTokens(tokens, payload);
 }
 
 export function buildFcmMulticastMessage(tokens: string[], payload: FcmPayload, now = new Date()) {
