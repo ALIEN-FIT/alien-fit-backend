@@ -13,6 +13,15 @@ import { UserProfileEntity } from '../../modules/user-profile/v1/model/user-prof
 import { PlanUpdateRequestService } from '../../modules/requests/v1/plan-update-request.service.js';
 import { getCapabilitiesForPlanType } from '../../modules/subscription-packages/v1/subscription-plan-type.js';
 import { UserSessionService } from '../../modules/user-session/v1/user-session.service.js';
+import { UserSessionEntity } from '../../modules/user-session/v1/entity/user-session.entity.js';
+import { NotificationService } from '../../modules/notification/v1/notification.service.js';
+
+// All scheduled notifications run on Egypt local time.
+const CRON_TIMEZONE = 'Africa/Cairo';
+// Alert admins when a subscribed member hasn't opened the app for this many days.
+const INACTIVITY_ALERT_DAYS = 7;
+// Alert admins this many days before a member's subscription ends.
+const SUBSCRIPTION_ENDING_SOON_DAYS = 7;
 
 function startOfDayUTC(date: Date) {
     const d = new Date(date);
@@ -359,19 +368,199 @@ function buildSubscriptionEndingTodayBody(userNames: string[]) {
     return `Subscriptions ending today: ${previewNames}, and ${remaining} more.`;
 }
 
+function buildSubscriptionEndingSoonBody(userNames: string[]) {
+    const lead = `Subscriptions ending in ${SUBSCRIPTION_ENDING_SOON_DAYS} days`;
+    if (userNames.length <= 5) {
+        return `${lead}: ${userNames.join(', ')}.`;
+    }
+
+    const previewNames = userNames.slice(0, 5).join(', ');
+    const remaining = userNames.length - 5;
+    return `${lead}: ${previewNames}, and ${remaining} more.`;
+}
+
+// Alert admins/trainers about members whose subscription ends in N days (not just today).
+async function enqueueSubscriptionEndingSoonAlerts() {
+    const now = new Date();
+    const targetDay = daysAgoUTC(now, -SUBSCRIPTION_ENDING_SOON_DAYS);
+    const targetStart = startOfDayUTC(targetDay);
+    const targetEnd = endOfDayUTC(targetDay);
+
+    const expiringSubscriptions = await SubscriptionEntity.findAll({
+        where: {
+            isSubscribed: true,
+            endDate: { [Op.between]: [targetStart, targetEnd] },
+        },
+        include: [{
+            model: UserEntity,
+            as: 'user',
+            required: true,
+            where: { role: Roles.USER },
+            attributes: ['id', 'name'],
+        }],
+        order: [['endDate', 'ASC']],
+    });
+
+    if (expiringSubscriptions.length === 0) {
+        return;
+    }
+
+    const recipients = await UserEntity.findAll({
+        where: { role: { [Op.in]: [Roles.ADMIN, Roles.TRAINER] } },
+        attributes: ['id'],
+    });
+
+    if (recipients.length === 0) {
+        return;
+    }
+
+    const todayStart = startOfDayUTC(now);
+    const todayEnd = endOfDayUTC(now);
+    const recipientIds = recipients.map((recipient) => String(recipient.id));
+
+    const existingAlerts = await NotificationEntity.findAll({
+        where: {
+            userId: recipientIds,
+            type: NotificationTypes.SUBSCRIPTION_ENDS_SOON,
+            createdAt: { [Op.between]: [todayStart, todayEnd] },
+        },
+        attributes: ['userId'],
+    });
+
+    const alreadySentRecipientIds = new Set(existingAlerts.map((notification: any) => String(notification.userId)));
+    const userNames = Array.from(new Set(expiringSubscriptions
+        .map((subscription: any) => String(subscription.user?.name ?? '').trim())
+        .filter(Boolean)));
+
+    if (userNames.length === 0) {
+        return;
+    }
+
+    const body = buildSubscriptionEndingSoonBody(userNames);
+    const jobs: NotificationJob[] = [];
+
+    for (const recipientId of recipientIds) {
+        if (alreadySentRecipientIds.has(recipientId)) {
+            continue;
+        }
+
+        jobs.push({
+            name: 'send',
+            data: {
+                userId: recipientId,
+                byUserId: null,
+                type: NotificationTypes.SUBSCRIPTION_ENDS_SOON,
+                title: 'Subscriptions ending soon',
+                body,
+            },
+        });
+    }
+
+    if (jobs.length === 0) {
+        return;
+    }
+
+    const chunkSize = 1000;
+    for (let i = 0; i < jobs.length; i += chunkSize) {
+        await notificationQueue.addBulk(jobs.slice(i, i + chunkSize));
+    }
+
+    infoLogger.info(`Queued ${jobs.length} subscription ending soon notifications`);
+}
+
+// Alert admins/trainers when a subscribed member hasn't opened the app for N+ days.
+// "Last open" is derived from the most recent user-session activity (the mobile app
+// re-syncs its session on every foreground). De-duplicated so the same member is not
+// re-reported more than once per inactivity window.
+async function enqueueInactiveUserAlerts() {
+    const now = new Date();
+    const cutoff = daysAgoUTC(now, INACTIVITY_ALERT_DAYS);
+
+    const subscriptions = await SubscriptionEntity.findAll({
+        where: { isSubscribed: true },
+        include: [{ model: UserEntity, as: 'user', required: true, where: { role: Roles.USER }, attributes: ['id', 'name'] }],
+    });
+
+    const users = subscriptions
+        .map((subscription: any) => subscription.user)
+        .filter((user: any) => Boolean(user?.id));
+
+    if (users.length === 0) {
+        return;
+    }
+
+    const userIds = users.map((user: any) => String(user.id));
+
+    const sessions = await UserSessionEntity.findAll({
+        where: { userId: userIds },
+        attributes: ['userId', 'updatedAt'],
+    });
+
+    const lastSeenByUser = new Map<string, number>();
+    for (const session of sessions) {
+        const uid = String(session.userId);
+        const seenAt = new Date(session.updatedAt).getTime();
+        if (seenAt > (lastSeenByUser.get(uid) ?? 0)) {
+            lastSeenByUser.set(uid, seenAt);
+        }
+    }
+
+    const inactiveUsers = users.filter((user: any) => {
+        const lastSeen = lastSeenByUser.get(String(user.id));
+        return lastSeen !== undefined && lastSeen < cutoff.getTime();
+    });
+
+    if (inactiveUsers.length === 0) {
+        return;
+    }
+
+    const inactiveIds = inactiveUsers.map((user: any) => String(user.id));
+    const recentAlerts = await NotificationEntity.findAll({
+        where: {
+            type: NotificationTypes.USER_INACTIVE,
+            byUserId: inactiveIds,
+            createdAt: { [Op.gte]: cutoff },
+        },
+        attributes: ['byUserId'],
+    });
+
+    const alreadyAlerted = new Set(recentAlerts.map((notification: any) => String(notification.byUserId)));
+
+    let alerted = 0;
+    for (const user of inactiveUsers) {
+        if (alreadyAlerted.has(String(user.id))) {
+            continue;
+        }
+
+        await NotificationService.notifyAdminsAndTrainers({
+            type: NotificationTypes.USER_INACTIVE,
+            title: 'Inactive member',
+            body: `${user.name} hasn't opened the app for ${INACTIVITY_ALERT_DAYS}+ days.`,
+            byUserId: String(user.id),
+        });
+        alerted += 1;
+    }
+
+    if (alerted > 0) {
+        infoLogger.info(`Queued ${alerted} inactive-member alerts`);
+    }
+}
+
 export function startNotificationCron() {
-    // Twice daily at 09:00 and 21:00 server time
+    // Twice daily at 09:00 and 21:00 Egypt time (Africa/Cairo)
     cron.schedule('0 9,21 * * *', async () => {
         try {
             await enqueueDailyReminders();
             await enqueueSubscriptionEndingTodayAlerts();
+            await enqueueSubscriptionEndingSoonAlerts();
+            await enqueueInactiveUserAlerts();
             await enqueuePlanUpdateCycleAlerts();
         } catch (err) {
             errorLogger.error('Notification cron failed', err);
         }
-    });
+    }, { timezone: CRON_TIMEZONE });
 
-    infoLogger.info('Notification cron scheduled (09:00 and 21:00)');
+    infoLogger.info('Notification cron scheduled (09:00 and 21:00 Africa/Cairo)');
 
     cron.schedule('30 3 * * *', async () => {
         try {
@@ -380,7 +569,7 @@ export function startNotificationCron() {
         } catch (err) {
             errorLogger.error('User session cleanup failed', err);
         }
-    });
+    }, { timezone: CRON_TIMEZONE });
 
-    infoLogger.info('User session cleanup scheduled (03:30)');
+    infoLogger.info('User session cleanup scheduled (03:30 Africa/Cairo)');
 }

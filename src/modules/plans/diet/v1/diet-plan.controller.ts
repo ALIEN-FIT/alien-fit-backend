@@ -140,7 +140,9 @@ export async function getDietPlanController(req: Request, res: Response): Promis
 export async function getMyDietPlanController(req: Request, res: Response): Promise<void> {
     const user = req.user as UserEntity;
     const plan = await DietPlanService.getDietPlan(user, user.id.toString());
-    const dietPlan = serializeDietPlanTemplate(plan);
+    // Full weeks -> days view including per-meal and per-day completion (isDone),
+    // so the app can show each day and track which meals the user has finished.
+    const dietPlan = await serializeDietPlan(plan);
 
     res.status(StatusCodes.OK).json({
         status: 'success',

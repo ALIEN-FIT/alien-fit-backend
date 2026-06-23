@@ -4,6 +4,14 @@ import { SupportTicketStatus } from '../../../constants/support-ticket-status.js
 import { FeedbackEntity, FeedbackStatus, FeedbackType } from './feedback.entity.js';
 import { FeedbackRepository } from './feedback.repository.js';
 import { UserEntity } from '../../user/v1/entity/user.entity.js';
+import { NotificationService } from '../../notification/v1/notification.service.js';
+import { NotificationTypes } from '../../../constants/notification-type.js';
+
+const FEEDBACK_TITLE: Record<FeedbackType, string> = {
+    complaint: 'New complaint',
+    suggestion: 'New suggestion',
+    compliment: 'New compliment',
+};
 
 interface CreateFeedbackPayload {
     type: FeedbackType;
@@ -39,6 +47,16 @@ export class FeedbackService {
             adminReply: null,
             repliedBy: null,
             repliedAt: null,
+        });
+
+        const senderName = user?.name ?? payload.guestName?.trim() ?? 'A guest';
+        const preview = payload.body.length > 140 ? `${payload.body.slice(0, 140)}…` : payload.body;
+        await NotificationService.notifyAdminsAndTrainers({
+            type: NotificationTypes.NEW_FEEDBACK,
+            title: FEEDBACK_TITLE[payload.type] ?? 'New feedback',
+            body: `${senderName}: ${preview}`,
+            byUserId: user ? user.id.toString() : null,
+            excludeUserId: user ? user.id.toString() : undefined,
         });
 
         return feedback;
