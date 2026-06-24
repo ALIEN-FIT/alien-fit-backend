@@ -36,6 +36,10 @@ async function handleSend(job: Job<SendNotificationJobData>) {
             data: {
                 type: payload.type,
                 notificationId: notification.id,
+                // Optional deep-link hints (route, chatId, ...) supplied by the
+                // caller. Spread last so callers can enrich the payload without
+                // overriding the two fields above.
+                ...payload.data,
             },
         });
 
