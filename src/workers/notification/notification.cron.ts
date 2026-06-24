@@ -45,6 +45,13 @@ function toDateOnlyUTC(date: Date) {
     return startOfDayUTC(date).toISOString().slice(0, 10);
 }
 
+// A training day counts as a "rest" day when its name contains the word "rest"
+// (e.g. "Rest", "Rest Day", "Active Rest"). Members get no workout reminder on
+// these days. Extend this pattern if coaches also label rest days differently.
+function isRestDay(name: string | null | undefined): boolean {
+    return typeof name === 'string' && /\brest\b/i.test(name);
+}
+
 type NotificationJob = { name: string; data: any };
 
 async function enqueueDailyReminders() {
@@ -83,7 +90,9 @@ async function enqueueDailyReminders() {
 
     const sentByUserAndType = new Set(alreadySent.map((n: any) => `${n.userId}:${n.type}`));
 
-    // Find users who have a training day scheduled today
+    // Find users who have a training day scheduled today. Rest days (the coach
+    // labels the day's name with "rest") are excluded, so members are reminded
+    // every training day EXCEPT their rest day.
     const trainingDays = await TrainingPlanDayEntity.findAll({
         include: [{ model: TrainingPlanEntity, as: 'plan', required: true, where: { userId: userIds }, attributes: ['userId'] }],
         where: {
@@ -91,9 +100,15 @@ async function enqueueDailyReminders() {
                 [Op.between]: [todayStart, todayEnd],
             },
         },
+        attributes: ['id', 'planId', 'name'],
     });
 
-    const usersWithTrainingToday = new Set(trainingDays.map((d: any) => d.plan?.userId).filter(Boolean) as string[]);
+    const usersWithTrainingToday = new Set(
+        trainingDays
+            .filter((d: any) => !isRestDay(d.name))
+            .map((d: any) => d.plan?.userId)
+            .filter(Boolean) as string[]
+    );
 
     const dailyTrack = await DailyTrackingEntity.findAll({
         where: {
@@ -547,8 +562,8 @@ async function enqueueInactiveUserAlerts() {
 }
 
 export function startNotificationCron() {
-    // Twice daily at 09:00 and 21:00 Egypt time (Africa/Cairo)
-    cron.schedule('0 9,21 * * *', async () => {
+    // Once daily at 20:00 (8 PM) Egypt time (Africa/Cairo). No morning run.
+    cron.schedule('0 20 * * *', async () => {
         try {
             await enqueueDailyReminders();
             await enqueueSubscriptionEndingTodayAlerts();
@@ -560,7 +575,7 @@ export function startNotificationCron() {
         }
     }, { timezone: CRON_TIMEZONE });
 
-    infoLogger.info('Notification cron scheduled (09:00 and 21:00 Africa/Cairo)');
+    infoLogger.info('Notification cron scheduled (20:00 Africa/Cairo)');
 
     cron.schedule('30 3 * * *', async () => {
         try {
