@@ -187,6 +187,9 @@ export function initializeSocketServer(server: HTTPServer) {
                         title: `New message from ${socket.data.name}`,
                         body: preview,
                         byUserId: userId,
+                        // userId = the member who wrote, so the admin/trainer app
+                        // can open that member's chat on tap.
+                        data: { route: 'chat', chatId: message.chatId, userId },
                     });
                 } else if (role === Roles.TRAINER || role === Roles.ADMIN) {
                     const preview = await NotificationService.buildChatMessageNotificationPreview(content, mediaIds);
@@ -195,6 +198,7 @@ export function initializeSocketServer(server: HTTPServer) {
                         userId: resolvedUserId,
                         adminId: userId,
                         preview,
+                        chatId: message.chatId,
                     });
                 }
 

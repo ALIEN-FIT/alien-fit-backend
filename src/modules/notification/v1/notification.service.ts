@@ -55,6 +55,8 @@ export class NotificationService {
         userId: string;
         adminId?: string | null;
         preview: string;
+        // Used to deep-link the user straight into the chat when they tap the push.
+        chatId?: string;
     }) {
         await enqueueUserNotification({
             userId: payload.userId,
@@ -62,6 +64,7 @@ export class NotificationService {
             type: NotificationTypes.ADMIN_MESSAGE,
             title: `New message from ${ADMIN_CHAT_NOTIFICATION_DISPLAY_NAME}`,
             body: payload.preview,
+            data: payload.chatId ? { route: 'chat', chatId: payload.chatId } : undefined,
         });
     }
 
@@ -75,6 +78,9 @@ export class NotificationService {
         // currently has an active subscription. Used to keep admins focused on
         // paying members and silence noise from non-subscribers.
         onlyIfSubscriber?: boolean;
+        // Optional deep-link hints forwarded into the FCM data payload so the
+        // admin/trainer app can open the relevant screen on tap (e.g. the chat).
+        data?: Record<string, string>;
     }) {
         try {
             if (payload.onlyIfSubscriber) {
@@ -117,6 +123,7 @@ export class NotificationService {
                         type: payload.type,
                         title: payload.title,
                         body: payload.body,
+                        data: payload.data,
                     })
                 )
             );

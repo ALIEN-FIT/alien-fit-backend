@@ -7,6 +7,10 @@ export interface SendNotificationJobData {
     type: NotificationType;
     title: string;
     body: string;
+    // Extra key/value pairs threaded into the FCM `data` payload so the mobile
+    // app can deep-link on tap (e.g. { route: 'chat', chatId }). FCM requires
+    // every value to be a string.
+    data?: Record<string, string>;
 }
 
 export interface BroadcastNotificationJobData {
