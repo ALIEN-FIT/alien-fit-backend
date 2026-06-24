@@ -182,6 +182,7 @@ export class TrackingService {
                 title: 'Workout completed',
                 body: `${user.name} completed the workout for ${dateOnly}.`,
                 byUserId: user.id.toString(),
+                onlyIfSubscriber: true,
             });
         }
 
@@ -217,6 +218,7 @@ export class TrackingService {
                 title: 'Meals completed',
                 body: `${user.name} completed the meals for ${dateOnly}.`,
                 byUserId: user.id.toString(),
+                onlyIfSubscriber: true,
             });
         }
 

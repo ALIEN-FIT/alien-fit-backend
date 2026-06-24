@@ -5,6 +5,7 @@ import { NotificationRepository } from './notification.repository.js';
 import { NotificationType, NotificationTypes } from '../../../constants/notification-type.js';
 import { enqueueBroadcastNotification, enqueueUserNotification } from '../../../utils/notification.utils.js';
 import { UserEntity } from '../../user/v1/entity/user.entity.js';
+import { SubscriptionEntity } from '../../subscription/v1/entity/subscription.entity.js';
 import { MediaEntity } from '../../media/v1/model/media.model.js';
 import { Roles } from '../../../constants/roles.js';
 import { errorLogger } from '../../../config/logger.config.js';
@@ -70,8 +71,25 @@ export class NotificationService {
         body: string;
         byUserId?: string | null;
         excludeUserId?: string;
+        // When true, only notify admins/trainers if the related user (byUserId)
+        // currently has an active subscription. Used to keep admins focused on
+        // paying members and silence noise from non-subscribers.
+        onlyIfSubscriber?: boolean;
     }) {
         try {
+            if (payload.onlyIfSubscriber) {
+                if (!payload.byUserId) {
+                    return;
+                }
+                const subscriber = await SubscriptionEntity.findOne({
+                    where: { userId: payload.byUserId, isSubscribed: true },
+                    attributes: ['id'],
+                });
+                if (!subscriber) {
+                    return;
+                }
+            }
+
             const where: Record<string, unknown> = {
                 role: {
                     [Op.in]: [Roles.ADMIN, Roles.TRAINER],

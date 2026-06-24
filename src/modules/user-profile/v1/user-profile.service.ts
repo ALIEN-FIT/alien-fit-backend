@@ -164,6 +164,7 @@ export class UserProfileService {
           ? `${actor.name} updated InBody results.`
           : `${actor.name} updated profile data.`,
         byUserId: actor.id.toString(),
+        onlyIfSubscriber: true,
       });
     }
 

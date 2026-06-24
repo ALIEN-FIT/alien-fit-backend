@@ -23,6 +23,7 @@ export class PlanUpdateRequestService {
                 ? `${user.name} (${user.provider}) requested a plan update.`
                 : `${user.name} (${user.provider}) updated a pending plan update request.`,
             byUserId: user.id.toString(),
+            onlyIfSubscriber: true,
         });
     }
 
@@ -103,6 +104,7 @@ export class PlanUpdateRequestService {
             title: '30-day cycle completed',
             body: `${user.name} (${user.provider}) completed the 30-day cycle and needs an updated ${formatRequestedPlanKinds(requestedPlanKinds)}.`,
             byUserId: user.id.toString(),
+            onlyIfSubscriber: true,
         });
 
         return { request, created: true };
