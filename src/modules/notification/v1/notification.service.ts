@@ -115,6 +115,30 @@ export class NotificationService {
                 return;
             }
 
+            // Enrich the deep-link payload with the sender's identity so the
+            // admin/trainer app can open the right chat and render the peer's
+            // name/avatar immediately (no flash of "User" while it loads).
+            // userId is intentionally the SENDER (byUserId), used by the app as
+            // the chat peer. All FCM data values must be strings.
+            let data = payload.data;
+            if (payload.byUserId) {
+                const sender = await UserEntity.findByPk(payload.byUserId, {
+                    attributes: ['id', 'name', 'gender', 'imageId'],
+                    include: [{ model: MediaEntity, as: 'image', attributes: ['url'] }],
+                });
+                if (sender) {
+                    const avatarUrl = (sender as unknown as { image?: { url?: string } }).image?.url;
+                    data = {
+                        ...payload.data,
+                        userId: String(sender.id),
+                        senderName: sender.name,
+                        ...(sender.gender ? { gender: sender.gender } : {}),
+                        ...(sender.imageId ? { imageId: sender.imageId } : {}),
+                        ...(avatarUrl ? { avatarUrl } : {}),
+                    };
+                }
+            }
+
             await Promise.all(
                 recipients.map((recipient) =>
                     enqueueUserNotification({
@@ -123,7 +147,7 @@ export class NotificationService {
                         type: payload.type,
                         title: payload.title,
                         body: payload.body,
-                        data: payload.data,
+                        data,
                     })
                 )
             );
