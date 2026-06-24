@@ -1,4 +1,8 @@
 import { PassThrough } from 'stream';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
+import crypto from 'crypto';
 import { MediaEntity } from './model/media.model.js';
 import { HttpResponseError } from '../../../utils/appError.js';
 import { StatusCodes } from 'http-status-codes';
@@ -120,35 +124,43 @@ export class MediaService {
             throw new Error('Video buffer is empty');
         }
 
-        return new Promise<Buffer>((resolve, reject) => {
-            const inputStream = new PassThrough();
-            inputStream.end(file.buffer);
+        // Write the upload to a temp file on disk and let ffmpeg read it as a
+        // seekable input. Reading from a non-seekable pipe (PassThrough/stdin)
+        // fails for many real-world mp4 files (e.g. iOS recordings whose `moov`
+        // atom sits at the end of the file), and a stream error with no handler
+        // would crash the whole process. A file input avoids both problems.
+        const ext = this.getVideoInputFormat(file.mimetype) || 'tmp';
+        const tmpPath = path.join(
+            os.tmpdir(),
+            `media-frame-${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${ext}`
+        );
 
-            const command = ffmpeg(inputStream);
-            const videoFormat = this.getVideoInputFormat(file.mimetype);
-            if (videoFormat) {
-                command.inputFormat(videoFormat);
-            }
+        await fs.writeFile(tmpPath, file.buffer);
 
-            const chunks: Buffer[] = [];
-            const outputStream = new PassThrough();
+        try {
+            return await new Promise<Buffer>((resolve, reject) => {
+                const chunks: Buffer[] = [];
+                const outputStream = new PassThrough();
 
-            outputStream.on('data', (chunk) => chunks.push(chunk));
-            outputStream.on('end', () => {
-                if (!chunks.length) {
-                    return reject(new Error('Failed to capture a video frame'));
-                }
+                outputStream.on('data', (chunk) => chunks.push(chunk));
+                outputStream.on('end', () => {
+                    if (!chunks.length) {
+                        return reject(new Error('Failed to capture a video frame'));
+                    }
 
-                resolve(Buffer.concat(chunks));
+                    resolve(Buffer.concat(chunks));
+                });
+                outputStream.on('error', reject);
+
+                ffmpeg(tmpPath)
+                    .frames(1)
+                    .outputFormat('png')
+                    .on('error', reject)
+                    .pipe(outputStream, { end: true });
             });
-            outputStream.on('error', reject);
-
-            command
-                .frames(1)
-                .outputFormat('png')
-                .on('error', reject)
-                .pipe(outputStream, { end: true });
-        });
+        } finally {
+            await fs.rm(tmpPath, { force: true }).catch(() => undefined);
+        }
     }
 
     static async getMedia(id) {
