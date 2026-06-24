@@ -65,9 +65,9 @@ export async function sendMessageAsUserController(req: Request, res: Response): 
         title: `New message from ${req.user!.name}`,
         body: preview,
         byUserId: userId,
-        // userId = the member who wrote, so the admin/trainer app can open that
-        // member's chat on tap.
-        data: { route: 'chat', chatId: message.chatId, userId },
+        // notifyAdminsAndTrainers enriches this with the sender's
+        // userId/senderName/gender/avatarUrl from byUserId.
+        data: { route: 'chat', chatId: message.chatId },
     });
 
     res.status(StatusCodes.CREATED).json({

@@ -20,15 +20,24 @@
 ```
 
 ### للأدمن/الترينر (لما اليوزر يبعت) — `type: message`
-```json
+```jsonc
 {
   "type": "message",
   "notificationId": "<uuid>",
   "route": "chat",
   "chatId": "<uuid>",
-  "userId": "<uuid>"      // المستخدم صاحب الرسالة — عشان الأدمن يفتح شاته
+  "userId": "<uuid>",        // ⭐ الأهم = senderId (اليوزر صاحب الرسالة) — الـ peer اللي بتفتح شاته
+  "senderName": "اسم اليوزر", // عشان اسم الشات يظهر فورًا (من غيره يظهر "User" لثانية)
+  "gender": "male",          // موجود لو متسجّل عند اليوزر
+  "imageId": "<uuid>",       // موجود لو لليوزر صورة
+  "avatarUrl": "https://..." // موجود لو لليوزر صورة (URL جاهز)
 }
 ```
+
+> الباك إند بيملأ `userId`/`senderName`/`gender`/`imageId`/`avatarUrl` **تلقائيًا** من بيانات اليوزر
+> الباعت (عن طريق `byUserId`). الحقول الاختيارية (gender/imageId/avatarUrl) بتظهر بس لو متوفرة عند اليوزر.
+
+**الحد الأدنى المضمون دايمًا:** `notification.title` + `notification.body` + `data.type="message"` + `data.userId` (= senderId).
 
 > كل قيم الـ `data` بتيجي من FCM كـ **String** دايمًا حتى لو رقم — اعمل parse لو احتجت.
 
@@ -103,17 +112,21 @@ void handleNotificationTap(RemoteMessage message) {
 
   switch (data['route']) {
     case 'chat':
-      final userId = data['userId'];
-      final chatId = data['chatId'];
-      if (userId != null && userId.isNotEmpty) {
-        navigatorKey.currentState?.pushNamed(
-          AdminRoutes.userChatView,   // ← اسم الـ route عند الأدمن (عدّله)
-          arguments: {
-            'userId': userId,
-            'chatId': chatId,
-          },
-        );
-      }
+      final userId = data['userId'];     // ⭐ الـ peer = senderId
+      if (userId == null || userId.isEmpty) break;
+
+      navigatorKey.currentState?.pushNamed(
+        AdminRoutes.userChatView,         // ← اسم الـ route عند الأدمن (عدّله)
+        arguments: {
+          'userId': userId,
+          'chatId': data['chatId'],
+          // الحقول دي جاهزة من الباك إند عشان الشات يبان مكتمل فورًا:
+          'senderName': data['senderName'],
+          'avatarUrl': data['avatarUrl'],   // ممكن يكون null
+          'imageId': data['imageId'],       // بديل لو مفيش avatarUrl
+          'gender': data['gender'],
+        },
+      );
       break;
 
     default:
@@ -122,6 +135,9 @@ void handleNotificationTap(RemoteMessage message) {
   }
 }
 ```
+
+> استخدم `senderName` و `avatarUrl` كـ placeholder لحد ما تيجي بيانات الشات من الـ API،
+> عشان تتجنب وميض "User" أو صورة فاضية أول ما الشاشة تفتح.
 
 ---
 
@@ -252,9 +268,9 @@ Future<void> main() async {
 |---|---|
 | `src/utils/notification.utils.ts` | إضافة `data?: Record<string,string>` لـ `SendNotificationJobData` |
 | `src/workers/notification/notification.worker.ts` | دمج `...payload.data` داخل الـ FCM data |
-| `src/modules/notification/v1/notification.service.ts` | `notifyUserAboutAdminMessage` بياخد `chatId`؛ `notifyAdminsAndTrainers` بياخد `data` |
-| `src/socket/socket-server.ts` | تمرير `{ route:'chat', chatId }` لليوزر و `{ route:'chat', chatId, userId }` للأدمن |
-| `src/modules/chat/v1/chat.controller.ts` | تمرير `{ route:'chat', chatId, userId }` لإشعار الأدمن/الترينر |
+| `src/modules/notification/v1/notification.service.ts` | `notifyUserAboutAdminMessage` بياخد `chatId`؛ `notifyAdminsAndTrainers` بياخد `data` **وبيثري** الـ payload بـ `userId/senderName/gender/imageId/avatarUrl` من بيانات الباعت |
+| `src/socket/socket-server.ts` | تمرير `{ route:'chat', chatId }` في الاتجاهين (الإثراء بيحصل في الـ service) |
+| `src/modules/chat/v1/chat.controller.ts` | تمرير `{ route:'chat', chatId }` لإشعار الأدمن/الترينر |
 
 ### جدول الوجهات (route → شاشة)
 
