@@ -11,6 +11,16 @@ import { initializeSocketServer } from './socket/socket-server.js';
 import { startNotificationWorkers } from './workers/notification/index.js';
 import { initializeOTPCleanupJob } from './workers/otp-cleanup.worker.js';
 
+// Safety net: a stray stream/ffmpeg error (or any other async fault) must log
+// and keep the server alive instead of killing the process and resetting every
+// in-flight connection (clients see "Connection reset by peer").
+process.on('uncaughtException', (error) => {
+    console.error('[uncaughtException]', error);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('[unhandledRejection]', reason);
+});
+
 const app = express();
 const PORT = env.PORT;
 
