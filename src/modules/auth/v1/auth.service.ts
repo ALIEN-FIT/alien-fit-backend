@@ -11,6 +11,7 @@ import { otpService } from '../../otp/v1/otp.service.js';
 import { SubscriptionService } from '../../subscription/v1/subscription.service.js';
 import { AdminSettingsService } from '../../admin-settings/v1/admin-settings.service.js';
 import { isExpiredAt } from '../../../config/session.config.js';
+import { Op } from 'sequelize';
 
 const DEFAULT_FREE_DAYS = parseInt(process.env.DEFAULT_FREE_SUBSCRIPTION_DAYS || '7', 10);
 
@@ -176,10 +177,17 @@ export class AuthService {
             throw new HttpResponseError(StatusCodes.UNAUTHORIZED, 'Invalid refresh token');
         }
 
+        // Accept the current refresh token, or the one rotated out just before it.
+        // If a refresh response is lost (network drop, app killed mid-request),
+        // the client still holds the previous token; without this it would be
+        // rejected and the user logged out while the session is still valid.
         const session = await UserSessionEntity.findOne({
             where: {
                 id: decoded.sessionId,
-                refreshToken,
+                [Op.or]: [
+                    { refreshToken },
+                    { previousRefreshToken: refreshToken },
+                ],
             },
         });
 
@@ -199,9 +207,17 @@ export class AuthService {
             throw new HttpResponseError(StatusCodes.FORBIDDEN, 'Account is blocked');
         }
 
+        // Only shift the grace token when the client presented the current one.
+        // If it presented the previous one, keep that as the grace token so a
+        // second lost response can still be recovered from.
+        const presentedCurrentToken = session.refreshToken === refreshToken;
+
         const newAccessToken = user.generateAuthToken(session.id.toString());
         const newRefreshToken = await user.generateRefreshToken(session.id.toString());
 
+        if (presentedCurrentToken) {
+            session.previousRefreshToken = refreshToken;
+        }
         session.refreshToken = newRefreshToken;
 
         await session.save();

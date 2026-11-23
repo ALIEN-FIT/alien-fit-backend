@@ -7,6 +7,7 @@ export class UserSessionEntity extends Model {
     declare id: string;
     declare userId: string;
     declare refreshToken?: string;
+    declare previousRefreshToken?: string | null;
     declare fcmToken?: string;
     declare deviceId?: string;
     declare fcmTokenUpdatedAt?: Date;
@@ -37,6 +38,10 @@ UserSessionEntity.init(
             type: DataTypes.TEXT,
             allowNull: true,
             unique: true, // uncomment if needed
+        },
+        previousRefreshToken: {
+            type: DataTypes.TEXT,
+            allowNull: true,
         },
         fcmToken: {
             type: DataTypes.STRING,
